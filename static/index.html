@@ -1,0 +1,1225 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Focus Engine – Behavioral Execution HUD</title>
+  <meta name="description" content="A personal accountability system that tracks focus sessions, audits excuses, and verifies work through AI-powered viva examinations." />
+  <meta name="theme-color" content="#0f172a" />
+  <link rel="manifest" href="/static/manifest.json" />
+  <link rel="icon" type="image/svg+xml" href="/static/icons/icon.svg" />
+  <link rel="apple-touch-icon" href="/static/icons/icon-192.png" />
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --bg-primary: #0f172a;
+      --bg-secondary: #1e293b;
+      --bg-card: #162032;
+      --accent-blue: #3b82f6;
+      --accent-cyan: #06b6d4;
+      --accent-green: #22c55e;
+      --accent-red: #ef4444;
+      --accent-amber: #f59e0b;
+      --accent-purple: #a855f7;
+      --text-primary: #f1f5f9;
+      --text-secondary: #94a3b8;
+      --border: #334155;
+    }
+    * { box-sizing: border-box; }
+    body {
+      font-family: 'Inter', sans-serif;
+      background: var(--bg-primary);
+      color: var(--text-primary);
+      min-height: 100vh;
+    }
+    .mono { font-family: 'JetBrains Mono', monospace; }
+    /* Glassmorphism card */
+    .glass {
+      background: rgba(30, 41, 59, 0.7);
+      backdrop-filter: blur(16px);
+      border: 1px solid rgba(51, 65, 85, 0.6);
+    }
+    /* Gradient text */
+    .grad-text {
+      background: linear-gradient(135deg, #3b82f6, #06b6d4, #a855f7);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+    /* Pulse ring for active timer */
+    @keyframes pulse-ring {
+      0% { box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.4); }
+      70% { box-shadow: 0 0 0 20px rgba(59, 130, 246, 0); }
+      100% { box-shadow: 0 0 0 0 rgba(59, 130, 246, 0); }
+    }
+    .timer-pulse { animation: pulse-ring 2s ease-in-out infinite; }
+    /* Slide-in modal */
+    @keyframes slide-up {
+      from { transform: translateY(60px); opacity: 0; }
+      to { transform: translateY(0); opacity: 1; }
+    }
+    .modal-enter { animation: slide-up 0.3s ease-out forwards; }
+    /* Distraction button shake on click */
+    @keyframes shake {
+      0%, 100% { transform: translateX(0); }
+      25% { transform: translateX(-4px); }
+      75% { transform: translateX(4px); }
+    }
+    .shake { animation: shake 0.3s ease; }
+    /* Custom scrollbar */
+    ::-webkit-scrollbar { width: 6px; }
+    ::-webkit-scrollbar-track { background: var(--bg-primary); }
+    ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+    /* Goal tiers */
+    .goal-min { border-left: 3px solid var(--accent-amber); }
+    .goal-target { border-left: 3px solid var(--accent-blue); }
+    .goal-stretch { border-left: 3px solid var(--accent-purple); }
+    /* Toast */
+    @keyframes toast-in {
+      from { transform: translateX(120%); opacity: 0; }
+      to { transform: translateX(0); opacity: 1; }
+    }
+    @keyframes toast-out {
+      from { transform: translateX(0); opacity: 1; }
+      to { transform: translateX(120%); opacity: 0; }
+    }
+    .toast-enter { animation: toast-in 0.3s ease-out; }
+    .toast-exit { animation: toast-out 0.3s ease-in forwards; }
+    /* Hide by default */
+    .hidden { display: none !important; }
+    /* Spinner */
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .spin { animation: spin 0.8s linear infinite; }
+    /* Verdict glow */
+    .verdict-pass { box-shadow: 0 0 30px rgba(34, 197, 94, 0.3); border-color: #22c55e !important; }
+    .verdict-fail { box-shadow: 0 0 30px rgba(239, 68, 68, 0.3); border-color: #ef4444 !important; }
+  </style>
+</head>
+
+<body class="p-4 md:p-6">
+
+  <!-- ============================================================
+       TOP HEADER – Stats Bar
+  ============================================================ -->
+  <header class="glass rounded-2xl p-4 mb-6 flex flex-wrap items-center justify-between gap-4">
+    <div class="flex items-center gap-3">
+      <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-lg font-black">⚡</div>
+      <div>
+        <h1 class="text-lg font-bold grad-text">Focus Engine</h1>
+        <p class="text-xs text-slate-400 mono">Behavioral Accountability System</p>
+      </div>
+    </div>
+    <div class="flex gap-4 flex-wrap">
+      <div id="stat-focused" class="text-center px-4 py-2 rounded-xl bg-blue-500/10 border border-blue-500/30">
+        <div class="text-2xl font-black text-blue-400 mono" id="stat-focused-val">0.0</div>
+        <div class="text-xs text-slate-400">min focused</div>
+      </div>
+      <div id="stat-verified" class="text-center px-4 py-2 rounded-xl bg-green-500/10 border border-green-500/30">
+        <div class="text-2xl font-black text-green-400 mono" id="stat-verified-val">0</div>
+        <div class="text-xs text-slate-400">verified</div>
+      </div>
+      <div id="stat-latency" class="text-center px-4 py-2 rounded-xl bg-amber-500/10 border border-amber-500/30">
+        <div class="text-2xl font-black text-amber-400 mono" id="stat-latency-val">0</div>
+        <div class="text-xs text-slate-400">avg latency (min)</div>
+      </div>
+      <div id="stat-ratio" class="text-center px-4 py-2 rounded-xl bg-purple-500/10 border border-purple-500/30">
+        <div class="text-2xl font-black text-purple-400 mono" id="stat-ratio-val">0%</div>
+        <div class="text-xs text-slate-400">execution ratio</div>
+      </div>
+    </div>
+    <div class="flex items-center gap-2 flex-wrap">
+      <!-- Auth / User badge -->
+      <div id="auth-user-badge" onclick="openAuthModal()" title="Click to view Supabase / Google Auth settings"
+        class="px-3 py-1.5 rounded-xl bg-slate-800/80 hover:bg-slate-700/80 border border-slate-700 text-xs flex items-center gap-2 mono cursor-pointer transition">
+        <span id="auth-status-dot" class="w-2 h-2 rounded-full bg-emerald-400"></span>
+        <span id="auth-user-label" class="text-slate-300">Checking auth…</span>
+      </div>
+      <button id="btn-login-google" onclick="openAuthModal()" class="hidden bg-white hover:bg-slate-100 text-slate-900 font-semibold px-3 py-1.5 rounded-xl text-xs flex items-center gap-1.5 transition shadow active:scale-95">
+        <svg class="w-3.5 h-3.5" viewBox="0 0 24 24"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"/></svg>
+        Sign in with Google
+      </button>
+      <button id="btn-logout" onclick="logout()" class="hidden text-slate-400 hover:text-red-400 text-xs px-2.5 py-1.5 rounded-lg hover:bg-slate-800 transition">
+        Sign Out
+      </button>
+      <button id="btn-refresh-stats" onclick="loadStats()" class="text-slate-400 hover:text-white transition text-sm px-3 py-1.5 rounded-lg hover:bg-slate-700">
+        ↻ Refresh
+      </button>
+    </div>
+  </header>
+
+  <!-- ============================================================
+       MAIN GRID
+  ============================================================ -->
+  <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+
+    <!-- ---- LEFT COLUMN: Task Creation + Task List ---- -->
+    <div class="lg:col-span-1 space-y-6">
+
+      <!-- Task Creation Form -->
+      <section class="glass rounded-2xl p-5">
+        <h2 class="text-base font-bold text-slate-200 mb-4 flex items-center gap-2">
+          <span class="text-blue-400">＋</span> New Task
+        </h2>
+        <form id="task-form" onsubmit="submitTask(event)" class="space-y-3">
+          <input id="f-title" type="text" placeholder="Task title *" required
+            class="w-full bg-slate-800/60 border border-slate-600 rounded-lg px-3 py-2.5 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-blue-500 transition" />
+
+          <div class="grid grid-cols-2 gap-2">
+            <select id="f-category" class="bg-slate-800/60 border border-slate-600 rounded-lg px-3 py-2.5 text-sm text-slate-100 focus:outline-none focus:border-blue-500 transition">
+              <option value="coding">💻 Coding</option>
+              <option value="tnp">📊 T&P Aptitude</option>
+              <option value="theory">📖 Theory</option>
+            </select>
+            <select id="f-priority" class="bg-slate-800/60 border border-slate-600 rounded-lg px-3 py-2.5 text-sm text-slate-100 focus:outline-none focus:border-blue-500 transition">
+              <option value="1">P1 – Critical</option>
+              <option value="2">P2 – High</option>
+              <option value="3" selected>P3 – Normal</option>
+              <option value="4">P4 – Low</option>
+            </select>
+          </div>
+
+          <div>
+            <label class="text-xs text-slate-400 mb-1 block">Estimated Duration (min)</label>
+            <input id="f-duration" type="number" value="60" min="5"
+              class="w-full bg-slate-800/60 border border-slate-600 rounded-lg px-3 py-2.5 text-sm text-slate-100 focus:outline-none focus:border-blue-500 transition" />
+          </div>
+
+          <!-- 3-tier goals -->
+          <div class="space-y-2">
+            <label class="text-xs text-slate-400 block">3-Tier Goals (minutes)</label>
+            <div class="grid grid-cols-3 gap-2">
+              <div class="goal-min rounded-lg pl-2 pr-1 py-2 bg-amber-500/5">
+                <div class="text-xs text-amber-400 mb-1">Min</div>
+                <input id="f-min" type="number" value="25" min="1"
+                  class="w-full bg-transparent text-sm text-slate-100 focus:outline-none mono" />
+              </div>
+              <div class="goal-target rounded-lg pl-2 pr-1 py-2 bg-blue-500/5">
+                <div class="text-xs text-blue-400 mb-1">Target</div>
+                <input id="f-target" type="number" value="50" min="1"
+                  class="w-full bg-transparent text-sm text-slate-100 focus:outline-none mono" />
+              </div>
+              <div class="goal-stretch rounded-lg pl-2 pr-1 py-2 bg-purple-500/5">
+                <div class="text-xs text-purple-400 mb-1">Stretch</div>
+                <input id="f-stretch" type="number" value="90" min="1"
+                  class="w-full bg-transparent text-sm text-slate-100 focus:outline-none mono" />
+              </div>
+            </div>
+          </div>
+
+          <button type="submit" id="btn-create-task"
+            class="w-full bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 text-white rounded-lg py-2.5 text-sm font-semibold transition-all duration-200 active:scale-95">
+            Create Task
+          </button>
+        </form>
+      </section>
+
+      <!-- Task List -->
+      <section class="glass rounded-2xl p-5">
+        <h2 class="text-base font-bold text-slate-200 mb-3 flex items-center gap-2">
+          <span class="text-cyan-400">◈</span> Tasks
+        </h2>
+        <div id="task-list" class="space-y-2 max-h-[360px] overflow-y-auto pr-1">
+          <p class="text-slate-500 text-sm italic">Loading tasks…</p>
+        </div>
+      </section>
+
+    </div>
+
+    <!-- ---- CENTER + RIGHT: Focus HUD ---- -->
+    <div class="lg:col-span-2 space-y-6">
+
+      <!-- Active Focus HUD -->
+      <section id="hud-section" class="glass rounded-2xl p-6">
+        <h2 class="text-base font-bold text-slate-200 mb-5 flex items-center gap-2">
+          <span class="text-red-400">●</span> Focus HUD
+        </h2>
+
+        <!-- No-session state -->
+        <div id="hud-idle" class="text-center py-12">
+          <div class="text-6xl mb-4">🎯</div>
+          <p class="text-slate-400 mb-2">No active session.</p>
+          <p class="text-slate-500 text-sm">Select a task below and click <strong class="text-slate-300">Start Session</strong>.</p>
+        </div>
+
+        <!-- Active session state (hidden by default) -->
+        <div id="hud-active" class="hidden">
+          <!-- Timer display -->
+          <div class="flex flex-col items-center mb-6">
+            <div id="timer-circle" class="timer-pulse w-40 h-40 rounded-full border-4 border-blue-500 flex items-center justify-center mb-3">
+              <div id="timer-display" class="mono text-4xl font-black text-blue-400">00:00:00</div>
+            </div>
+            <div id="task-banner" class="text-center">
+              <p id="session-task-name" class="text-lg font-bold text-slate-100"></p>
+              <p id="session-goal-banner" class="text-sm mt-1"></p>
+            </div>
+          </div>
+
+          <!-- Latency warning -->
+          <div id="latency-banner" class="hidden mb-4 px-4 py-2 rounded-lg bg-amber-500/10 border border-amber-500/40 text-amber-300 text-sm text-center mono"></div>
+
+          <!-- Distraction Logger -->
+          <div class="mb-5">
+            <p class="text-xs text-slate-400 mb-2 uppercase tracking-widest">1-Tap Distraction Log</p>
+            <div class="grid grid-cols-4 gap-2">
+              <button onclick="logDistraction('phone')" id="dist-phone"
+                class="dist-btn py-3 rounded-xl bg-red-500/10 border border-red-500/30 hover:bg-red-500/20 text-center transition active:scale-95 flex flex-col items-center gap-1">
+                <span class="text-xl">📱</span>
+                <span class="text-xs text-red-400">Phone</span>
+                <span class="text-xs text-slate-500 mono dist-count-phone">×0</span>
+              </button>
+              <button onclick="logDistraction('youtube')" id="dist-youtube"
+                class="dist-btn py-3 rounded-xl bg-red-500/10 border border-red-500/30 hover:bg-red-500/20 text-center transition active:scale-95 flex flex-col items-center gap-1">
+                <span class="text-xl">▶️</span>
+                <span class="text-xs text-red-400">YouTube</span>
+                <span class="text-xs text-slate-500 mono dist-count-youtube">×0</span>
+              </button>
+              <button onclick="logDistraction('overthinking')" id="dist-overthinking"
+                class="dist-btn py-3 rounded-xl bg-amber-500/10 border border-amber-500/30 hover:bg-amber-500/20 text-center transition active:scale-95 flex flex-col items-center gap-1">
+                <span class="text-xl">🌀</span>
+                <span class="text-xs text-amber-400">Overthink</span>
+                <span class="text-xs text-slate-500 mono dist-count-overthinking">×0</span>
+              </button>
+              <button onclick="logDistraction('other')" id="dist-other"
+                class="dist-btn py-3 rounded-xl bg-slate-500/10 border border-slate-500/30 hover:bg-slate-500/20 text-center transition active:scale-95 flex flex-col items-center gap-1">
+                <span class="text-xl">💭</span>
+                <span class="text-xs text-slate-400">Other</span>
+                <span class="text-xs text-slate-500 mono dist-count-other">×0</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- Complete & Submit -->
+          <button onclick="endSession()" id="btn-end-session"
+            class="w-full bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-500 hover:to-emerald-500 text-white rounded-xl py-3.5 text-sm font-bold transition-all duration-200 active:scale-95">
+            ✅ Complete & Submit Proof
+          </button>
+
+          <!-- Paste Warning Banner -->
+          <div id="paste-warning" class="hidden mt-3 px-4 py-3 rounded-xl bg-red-500/10 border border-red-500/40 text-red-300 text-sm text-center">
+            ⚠️ <strong>Paste burst detected</strong> by VS Code watchdog. Viva will include paste justification.
+          </div>
+        </div>
+      </section>
+
+      <!-- Quick Start Panel -->
+      <section class="glass rounded-2xl p-5">
+        <h2 class="text-base font-bold text-slate-200 mb-3 flex items-center gap-2">
+          <span class="text-green-400">▶</span> Quick Start
+        </h2>
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="text-xs text-slate-400 mb-1 block">Task</label>
+            <select id="qs-task" class="w-full bg-slate-800/60 border border-slate-600 rounded-lg px-3 py-2 text-sm text-slate-100 focus:outline-none focus:border-blue-500">
+              <option value="">— Select task —</option>
+            </select>
+          </div>
+          <div class="flex flex-col">
+            <label class="text-xs text-slate-400 mb-1 block">Mode</label>
+            <div class="flex gap-2">
+              <button onclick="startSession(false)" id="btn-start-normal"
+                class="flex-1 bg-blue-600 hover:bg-blue-500 text-white rounded-lg py-2 text-sm font-semibold transition active:scale-95">
+                ▶ Start
+              </button>
+              <button onclick="startSession(true)" id="btn-start-5min"
+                class="flex-1 bg-amber-600 hover:bg-amber-500 text-white rounded-lg py-2 text-sm font-semibold transition active:scale-95" title="5-min micro-session floor">
+                ⚡ 5-min
+              </button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Today's Sessions Log -->
+      <section class="glass rounded-2xl p-5">
+        <h2 class="text-base font-bold text-slate-200 mb-3 flex items-center gap-2">
+          <span class="text-purple-400">📋</span> Today's Sessions
+        </h2>
+        <div id="sessions-log" class="space-y-2 max-h-48 overflow-y-auto pr-1 text-sm text-slate-400 italic">
+          Loading…
+        </div>
+      </section>
+
+    </div>
+  </div>
+
+  <!-- ============================================================
+       FRICTION & HABIT ANALYTICS ENGINE (F ∈ [0, 100])
+  ============================================================ -->
+  <section id="friction-analytics-section" class="glass rounded-2xl p-6 my-6">
+    <div class="flex items-center justify-between mb-4 flex-wrap gap-2">
+      <div class="flex items-center gap-3">
+        <div class="w-9 h-9 rounded-xl bg-gradient-to-br from-amber-500 to-rose-600 flex items-center justify-center text-base font-black">📉</div>
+        <div>
+          <h2 class="text-base font-bold text-slate-100 flex items-center gap-2">
+            Friction & Behavioral Audit
+            <span class="text-[10px] mono px-2 py-0.5 rounded-full bg-slate-800 text-slate-400 border border-slate-700">F ∈ [0, 100]</span>
+          </h2>
+          <p class="text-xs text-slate-400">Mathematical resistance index quantifying initiation paralysis, delay cascades & interruptions</p>
+        </div>
+      </div>
+      <div class="flex items-center gap-2">
+        <select id="friction-days-select" onchange="loadFrictionReport()" class="bg-slate-800/80 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-blue-500 mono">
+          <option value="7" selected>Past 7 Days</option>
+          <option value="14">Past 14 Days</option>
+          <option value="30">Past 30 Days</option>
+        </select>
+        <button onclick="loadFrictionReport()" class="text-slate-400 hover:text-white transition text-xs px-2.5 py-1.5 rounded-lg hover:bg-slate-800">↻ Refresh</button>
+      </div>
+    </div>
+
+    <!-- Bottleneck Culprit Callout Banner -->
+    <div id="friction-culprit-banner" class="mb-5 p-3.5 rounded-xl border border-amber-500/30 bg-amber-500/10 text-amber-200 text-xs flex items-center gap-3">
+      <span class="text-xl" id="culprit-icon">⚠️</span>
+      <div class="flex-1 min-w-0">
+        <span class="font-bold tracking-wide uppercase text-[11px] text-amber-300 block" id="culprit-title">Primary Behavioral Bottleneck</span>
+        <span id="culprit-insight" class="text-slate-300 truncate block">Loading behavioral friction analysis…</span>
+      </div>
+    </div>
+
+    <!-- Metric Grid -->
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-5">
+      <!-- System Friction Index Gauge -->
+      <div class="p-4 rounded-xl bg-slate-800/40 border border-slate-700/60 flex items-center gap-4">
+        <div id="friction-gauge-circle" class="w-16 h-16 rounded-full border-4 border-emerald-500 flex flex-col items-center justify-center font-black mono text-emerald-400 transition-colors duration-500 flex-shrink-0">
+          <span id="friction-gauge-val" class="text-lg">0</span>
+          <span class="text-[9px] text-slate-400 -mt-1">/100</span>
+        </div>
+        <div>
+          <div class="text-xs text-slate-400">System Friction Index</div>
+          <div id="friction-status-badge" class="text-xs font-semibold text-emerald-400 mt-0.5">Optimal Flow (&lt;30)</div>
+          <div class="text-[10px] text-slate-500 mt-1 mono">w₁·Δt + w₂·S + w₃·I + w₄·C + w₅·Int</div>
+        </div>
+      </div>
+
+      <!-- Total Sessions in window -->
+      <div class="p-4 rounded-xl bg-slate-800/40 border border-slate-700/60">
+        <div class="text-2xl font-black text-cyan-400 mono" id="friction-total-sessions">0</div>
+        <div class="text-xs text-slate-400 mt-1">Sessions Evaluated</div>
+        <div class="text-[10px] text-slate-500">In selected time window</div>
+      </div>
+
+      <!-- Total Distractions -->
+      <div class="p-4 rounded-xl bg-slate-800/40 border border-slate-700/60">
+        <div class="text-2xl font-black text-amber-400 mono" id="friction-total-distractions">0</div>
+        <div class="text-xs text-slate-400 mt-1">Distractions Logged</div>
+        <div class="text-[10px] text-slate-500">Phone, YouTube & Overthinking</div>
+      </div>
+
+      <!-- Overall Pass Rate -->
+      <div class="p-4 rounded-xl bg-slate-800/40 border border-slate-700/60">
+        <div class="text-2xl font-black text-purple-400 mono" id="friction-overall-passrate">0%</div>
+        <div class="text-xs text-slate-400 mt-1">Viva Defense Pass Rate</div>
+        <div class="text-[10px] text-slate-500">Proof verified sessions</div>
+      </div>
+    </div>
+
+    <!-- Category Breakdown Cards -->
+    <div class="space-y-2">
+      <h3 class="text-xs font-bold text-slate-300 uppercase tracking-wider mb-2">Category Resistance Breakdown</h3>
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-3" id="friction-category-cards">
+        <p class="text-slate-500 text-xs italic">Loading category analytics…</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================================================
+       MODALS
+  ============================================================ -->
+
+  <!-- Excuse Auditor Modal -->
+  <div id="modal-excuse" class="hidden fixed inset-0 z-50 flex items-end justify-center p-4 sm:items-center" style="background:rgba(0,0,0,0.7);backdrop-filter:blur(4px)">
+    <div class="modal-enter glass rounded-2xl w-full max-w-lg p-6">
+      <h3 class="text-lg font-bold text-red-400 mb-1">🚨 Excuse Auditor</h3>
+      <p class="text-sm text-slate-400 mb-4">You've snoozed twice. State your reason. It will be evaluated for validity.</p>
+      <input id="excuse-schedule-id" type="hidden" />
+      <textarea id="excuse-reason" rows="3" placeholder="State your reason honestly…"
+        class="w-full bg-slate-800/60 border border-slate-600 rounded-lg px-3 py-2 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-red-500 transition mb-3 resize-none"></textarea>
+      <div id="excuse-result" class="hidden mb-3 px-4 py-3 rounded-xl text-sm border"></div>
+      <div class="flex gap-2">
+        <button onclick="submitExcuse()" id="btn-submit-excuse"
+          class="flex-1 bg-red-600 hover:bg-red-500 text-white rounded-lg py-2.5 text-sm font-bold transition active:scale-95">
+          Submit for Audit
+        </button>
+        <button onclick="closeModal('modal-excuse')"
+          class="px-4 py-2.5 rounded-lg text-slate-400 hover:bg-slate-700 text-sm transition">
+          Close
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Viva Modal -->
+  <div id="modal-viva" class="hidden fixed inset-0 z-50 flex items-end justify-center p-4 sm:items-center" style="background:rgba(0,0,0,0.7);backdrop-filter:blur(4px)">
+    <div class="modal-enter glass rounded-2xl w-full max-w-2xl p-6">
+
+      <!-- Step 1: Paste Proof -->
+      <div id="viva-step-1">
+        <h3 class="text-lg font-bold text-cyan-400 mb-1">📎 Step 1 – Submit Proof</h3>
+        <p class="text-sm text-slate-400 mb-3">Paste your code snippet, theory notes, or aptitude scorecard below. The AI will generate a viva question based on this.</p>
+        <textarea id="viva-proof" rows="8" placeholder="Paste your code / notes / scorecard here…"
+          class="w-full bg-slate-900/60 border border-slate-600 rounded-lg px-3 py-2 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-cyan-500 transition mb-3 resize-y mono font-medium"></textarea>
+        <div class="flex gap-2">
+          <button onclick="requestViva()" id="btn-request-viva"
+            class="flex-1 bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white rounded-lg py-2.5 text-sm font-bold transition active:scale-95">
+            Generate Viva Question →
+          </button>
+          <button onclick="closeModal('modal-viva')" class="px-4 py-2.5 rounded-lg text-slate-400 hover:bg-slate-700 text-sm transition">Cancel</button>
+        </div>
+      </div>
+
+      <!-- Step 2: Answer the Question -->
+      <div id="viva-step-2" class="hidden">
+        <h3 class="text-lg font-bold text-blue-400 mb-1">🎯 Step 2 – Answer Viva Question</h3>
+        <div id="viva-question-box" class="mb-4 px-4 py-3 rounded-xl bg-blue-500/10 border border-blue-500/40 text-blue-100 text-sm mono leading-relaxed"></div>
+        <textarea id="viva-answer" rows="5" placeholder="Type your answer here. Be precise and technical."
+          class="w-full bg-slate-900/60 border border-slate-600 rounded-lg px-3 py-2 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-blue-500 transition mb-3 resize-y"></textarea>
+        <div class="flex gap-2">
+          <button onclick="submitViva()" id="btn-submit-viva"
+            class="flex-1 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 text-white rounded-lg py-2.5 text-sm font-bold transition active:scale-95">
+            Submit Answer →
+          </button>
+        </div>
+      </div>
+
+      <!-- Step 3: Verdict -->
+      <div id="viva-step-3" class="hidden">
+        <h3 class="text-lg font-bold mb-3" id="viva-verdict-title"></h3>
+        <div id="viva-verdict-box" class="px-5 py-4 rounded-xl border text-sm leading-relaxed mb-4 mono whitespace-pre-wrap"></div>
+        <button onclick="closeModal('modal-viva'); loadStats(); loadFrictionReport();"
+          class="w-full bg-slate-700 hover:bg-slate-600 text-white rounded-lg py-2.5 text-sm font-bold transition active:scale-95">
+          Done
+        </button>
+      </div>
+
+    </div>
+  <!-- Auth / Google Sign-In Modal -->
+  <div id="modal-auth" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4" style="background:rgba(0,0,0,0.75);backdrop-filter:blur(6px)">
+    <div class="modal-enter glass rounded-2xl w-full max-w-md p-6 space-y-4">
+      <div class="flex items-center justify-between">
+        <h3 class="text-lg font-bold grad-text flex items-center gap-2">
+          <span>⚡</span> Supabase & Google Auth
+        </h3>
+        <button onclick="closeModal('modal-auth')" class="text-slate-400 hover:text-white text-lg">✕</button>
+      </div>
+      <p class="text-xs text-slate-400 leading-relaxed">
+        Sign in to isolate and synchronize your focus sessions, excuses, and viva verifications with hosted Supabase PostgreSQL.
+      </p>
+
+      <div class="space-y-3 pt-1">
+        <button id="btn-oauth-google" onclick="signInWithGoogle()"
+          class="w-full bg-white hover:bg-slate-100 text-slate-900 font-semibold rounded-xl py-3 text-sm flex items-center justify-center gap-2 transition shadow active:scale-95">
+          <svg class="w-4 h-4" viewBox="0 0 24 24"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"/></svg>
+          Continue with Google
+        </button>
+
+        <div class="relative flex py-2 items-center">
+          <div class="flex-grow border-t border-slate-700"></div>
+          <span class="flex-shrink mx-2 text-[10px] text-slate-500 uppercase tracking-wider">or custom token / credentials</span>
+          <div class="flex-grow border-t border-slate-700"></div>
+        </div>
+
+        <div class="space-y-2.5 text-xs">
+          <div>
+            <label class="text-slate-400 block mb-1">Supabase Project URL</label>
+            <input id="auth-sb-url" type="url" placeholder="https://xyzcompany.supabase.co"
+              class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-slate-200 placeholder-slate-600 focus:outline-none focus:border-blue-500 mono" />
+          </div>
+          <div>
+            <label class="text-slate-400 block mb-1">Supabase Anon Key</label>
+            <input id="auth-sb-anon" type="text" placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+              class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-slate-200 placeholder-slate-600 focus:outline-none focus:border-blue-500 mono" />
+          </div>
+          <div>
+            <label class="text-slate-400 block mb-1">Manual JWT Bearer Token</label>
+            <textarea id="auth-manual-token" rows="2" placeholder="Paste custom Supabase / Google Bearer token here..."
+              class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-slate-200 placeholder-slate-600 focus:outline-none focus:border-blue-500 mono text-xs"></textarea>
+          </div>
+        </div>
+
+        <div class="flex gap-2 pt-2">
+          <button onclick="saveAuthSettings()" class="flex-1 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 text-white rounded-lg py-2.5 text-xs font-semibold transition active:scale-95">
+            Save & Connect
+          </button>
+          <button onclick="clearAuthToken()" class="px-3 py-2.5 rounded-lg text-slate-400 hover:bg-slate-800 text-xs transition">
+            Clear Token
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast container -->
+  <div id="toast-container" class="fixed top-4 right-4 z-[100] space-y-2 w-72"></div>
+
+
+  <!-- ============================================================
+       JAVASCRIPT
+  ============================================================ -->
+  <script>
+    // ---------------------------------------------------------------
+    // PWA Service Worker Registration
+    // ---------------------------------------------------------------
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('/static/sw.js')
+          .then(reg => console.log('[PWA] Service worker registered:', reg.scope))
+          .catch(err => console.warn('[PWA] SW registration failed:', err));
+      });
+    }
+
+    // ---------------------------------------------------------------
+    // State
+    // ---------------------------------------------------------------
+    const API = '';  // same origin
+    let activeSessionId = null;
+    let activeTaskId = null;
+    let activeTaskData = null;
+    let timerInterval = null;
+    let sessionStartTime = null;
+    let pasteWarningShown = false;
+    let distCounts = { phone: 0, youtube: 0, overthinking: 0, other: 0 };
+    let currentVivaSessionId = null;
+    let tasks = [];
+    let supabaseClient = null;
+
+    // ---------------------------------------------------------------
+    // Supabase & OAuth Helper Functions
+    // ---------------------------------------------------------------
+    function initSupabase() {
+      const sbUrl = localStorage.getItem('focus_sb_url') || '';
+      const sbAnon = localStorage.getItem('focus_sb_anon') || '';
+      if (sbUrl && sbAnon && window.supabase) {
+        try {
+          supabaseClient = window.supabase.createClient(sbUrl, sbAnon);
+        } catch(e) {
+          console.warn('Failed to initialize Supabase client:', e);
+        }
+      }
+    }
+
+    function handleOAuthCallback() {
+      if (window.location.hash && window.location.hash.includes('access_token=')) {
+        const hash = window.location.hash.substring(1);
+        const params = new URLSearchParams(hash);
+        const token = params.get('access_token');
+        if (token) {
+          localStorage.setItem('focus_auth_token', token);
+          toast('✅ Google authentication successful!', 'success');
+          window.history.replaceState(null, null, window.location.pathname);
+        }
+      }
+    }
+
+    async function checkAuthStatus() {
+      try {
+        const status = await api('GET', '/auth/status');
+        const userLabel = document.getElementById('auth-user-label');
+        const statusDot = document.getElementById('auth-status-dot');
+        const btnLogin = document.getElementById('btn-login-google');
+        const btnLogout = document.getElementById('btn-logout');
+
+        if (status.auth_disabled) {
+          statusDot.className = 'w-2 h-2 rounded-full bg-emerald-400';
+          userLabel.textContent = `Dev Mode (${status.user_id})`;
+          btnLogin.classList.add('hidden');
+          btnLogout.classList.add('hidden');
+        } else {
+          statusDot.className = 'w-2 h-2 rounded-full bg-emerald-400';
+          const uid = status.user_id || 'User';
+          userLabel.textContent = uid.length > 16 ? uid.substring(0, 14) + '…' : uid;
+          btnLogin.classList.add('hidden');
+          btnLogout.classList.remove('hidden');
+        }
+      } catch(e) {
+        const userLabel = document.getElementById('auth-user-label');
+        const statusDot = document.getElementById('auth-status-dot');
+        const btnLogin = document.getElementById('btn-login-google');
+        const btnLogout = document.getElementById('btn-logout');
+
+        statusDot.className = 'w-2 h-2 rounded-full bg-amber-400';
+        userLabel.textContent = 'Sign-in required';
+        btnLogin.classList.remove('hidden');
+        btnLogout.classList.add('hidden');
+      }
+    }
+
+    function openAuthModal() {
+      document.getElementById('auth-sb-url').value = localStorage.getItem('focus_sb_url') || '';
+      document.getElementById('auth-sb-anon').value = localStorage.getItem('focus_sb_anon') || '';
+      document.getElementById('auth-manual-token').value = localStorage.getItem('focus_auth_token') || '';
+      document.getElementById('modal-auth').classList.remove('hidden');
+    }
+
+    function saveAuthSettings() {
+      const sbUrl = document.getElementById('auth-sb-url').value.trim();
+      const sbAnon = document.getElementById('auth-sb-anon').value.trim();
+      const token = document.getElementById('auth-manual-token').value.trim();
+      if (sbUrl) localStorage.setItem('focus_sb_url', sbUrl);
+      if (sbAnon) localStorage.setItem('focus_sb_anon', sbAnon);
+      if (token) localStorage.setItem('focus_auth_token', token);
+      initSupabase();
+      closeModal('modal-auth');
+      toast('Auth settings saved.', 'success');
+      checkAuthStatus();
+      loadTasks();
+      loadStats();
+    }
+
+    function clearAuthToken() {
+      localStorage.removeItem('focus_auth_token');
+      document.getElementById('auth-manual-token').value = '';
+      toast('Token cleared.', 'info');
+      checkAuthStatus();
+    }
+
+    async function signInWithGoogle() {
+      initSupabase();
+      if (!supabaseClient) {
+        toast('Please enter Supabase URL & Anon Key below first.', 'warning');
+        return;
+      }
+      const btn = document.getElementById('btn-oauth-google');
+      btn.disabled = true;
+      btn.innerHTML = '<span class="spin inline-block">⟳</span> Connecting to Google…';
+      try {
+        const { data, error } = await supabaseClient.auth.signInWithOAuth({
+          provider: 'google',
+          options: {
+            redirectTo: window.location.origin,
+          },
+        });
+        if (error) throw error;
+      } catch(e) {
+        toast('Google login failed: ' + e.message, 'error');
+        btn.disabled = false;
+        btn.innerHTML = 'Continue with Google';
+      }
+    }
+
+    function logout() {
+      localStorage.removeItem('focus_auth_token');
+      toast('Signed out.', 'info');
+      checkAuthStatus();
+      loadTasks();
+      loadStats();
+    }
+
+    // ---------------------------------------------------------------
+    // Init
+    // ---------------------------------------------------------------
+    window.addEventListener('DOMContentLoaded', () => {
+      initSupabase();
+      handleOAuthCallback();
+      checkAuthStatus();
+      loadTasks();
+      loadStats();
+      // Poll for paste flags every 5s when a session is active
+      setInterval(pollPasteFlag, 5000);
+    });
+
+    // ---------------------------------------------------------------
+    // Toast
+    // ---------------------------------------------------------------
+    function toast(msg, type = 'info') {
+      const colors = {
+        info:    'bg-slate-700 border-slate-500',
+        success: 'bg-green-900/80 border-green-600',
+        error:   'bg-red-900/80 border-red-600',
+        warning: 'bg-amber-900/80 border-amber-600',
+      };
+      const el = document.createElement('div');
+      el.className = `toast-enter px-4 py-3 rounded-xl border text-sm text-slate-100 ${colors[type]} shadow-xl`;
+      el.textContent = msg;
+      document.getElementById('toast-container').appendChild(el);
+      setTimeout(() => {
+        el.classList.remove('toast-enter');
+        el.classList.add('toast-exit');
+        setTimeout(() => el.remove(), 300);
+      }, 3500);
+    }
+
+    // ---------------------------------------------------------------
+    // API helpers
+    // ---------------------------------------------------------------
+    async function api(method, path, body) {
+      try {
+        const headers = { 'Content-Type': 'application/json' };
+        const token = localStorage.getItem('focus_auth_token');
+        if (token) {
+          headers['Authorization'] = `Bearer ${token}`;
+        }
+        const opts = { method, headers };
+        if (body) opts.body = JSON.stringify(body);
+        const res = await fetch(API + path, opts);
+        if (!res.ok) {
+          if (res.status === 401) {
+            document.getElementById('auth-status-dot').className = 'w-2 h-2 rounded-full bg-amber-400';
+            document.getElementById('auth-user-label').textContent = 'Sign-in required';
+            document.getElementById('btn-login-google').classList.remove('hidden');
+            document.getElementById('btn-logout').classList.add('hidden');
+            openAuthModal();
+          }
+          const err = await res.json().catch(() => ({ detail: res.statusText }));
+          throw new Error(err.detail || res.statusText);
+        }
+        return await res.json();
+      } catch (e) {
+        throw e;
+      }
+    }
+
+    // ---------------------------------------------------------------
+    // Stats & Friction Analytics
+    // ---------------------------------------------------------------
+    async function loadStats() {
+      try {
+        const r = await api('GET', '/reports/today');
+        document.getElementById('stat-focused-val').textContent = r.total_focused_minutes.toFixed(1);
+        document.getElementById('stat-verified-val').textContent = r.verified_sessions;
+        document.getElementById('stat-latency-val').textContent = r.average_start_latency_min.toFixed(0);
+        document.getElementById('stat-ratio-val').textContent = r.execution_ratio_pct.toFixed(0) + '%';
+      } catch(e) { /* silently fail */ }
+      loadFrictionReport();
+    }
+
+    async function loadFrictionReport() {
+      const daysSelect = document.getElementById('friction-days-select');
+      const days = daysSelect ? daysSelect.value : 7;
+      try {
+        const data = await api('GET', `/reports/friction-analysis?days=${days}`);
+        renderFrictionReport(data);
+      } catch(e) {
+        console.warn('Friction report load error:', e);
+      }
+    }
+
+    function renderFrictionReport(data) {
+      if (!data) return;
+
+      const fVal = data.system_friction_index || 0;
+      document.getElementById('friction-gauge-val').textContent = fVal.toFixed(0);
+      document.getElementById('friction-total-sessions').textContent = data.total_sessions || 0;
+      document.getElementById('friction-total-distractions').textContent = data.total_distractions || 0;
+      document.getElementById('friction-overall-passrate').textContent = (data.overall_pass_rate_pct || 0).toFixed(0) + '%';
+
+      const gauge = document.getElementById('friction-gauge-circle');
+      const badge = document.getElementById('friction-status-badge');
+
+      if (fVal < 30) {
+        gauge.className = 'w-16 h-16 rounded-full border-4 border-emerald-500 flex flex-col items-center justify-center font-black mono text-emerald-400 transition-colors duration-500 flex-shrink-0';
+        badge.className = 'text-xs font-semibold text-emerald-400 mt-0.5';
+        badge.textContent = 'Optimal Flow (<30)';
+      } else if (fVal <= 65) {
+        gauge.className = 'w-16 h-16 rounded-full border-4 border-amber-500 flex flex-col items-center justify-center font-black mono text-amber-400 transition-colors duration-500 flex-shrink-0';
+        badge.className = 'text-xs font-semibold text-amber-400 mt-0.5';
+        badge.textContent = 'Moderate Resistance (30-65)';
+      } else {
+        gauge.className = 'w-16 h-16 rounded-full border-4 border-rose-500 flex flex-col items-center justify-center font-black mono text-rose-400 transition-colors duration-500 flex-shrink-0';
+        badge.className = 'text-xs font-semibold text-rose-400 mt-0.5';
+        badge.textContent = 'Severe Resistance (>65)';
+      }
+
+      // Culprit Banner
+      const culprit = data.culprit;
+      const culpritBanner = document.getElementById('friction-culprit-banner');
+      if (culprit && culprit.category && culprit.category !== 'none') {
+        culpritBanner.className = 'mb-5 p-3.5 rounded-xl border border-rose-500/40 bg-rose-500/10 text-rose-200 text-xs flex items-center gap-3';
+        document.getElementById('culprit-icon').textContent = culprit.icon || '🚨';
+        document.getElementById('culprit-title').textContent = 'Primary Behavioral Bottleneck: ' + (culprit.label || culprit.category);
+        document.getElementById('culprit-insight').textContent = culprit.insight || '';
+      } else {
+        culpritBanner.className = 'mb-5 p-3.5 rounded-xl border border-slate-700 bg-slate-800/40 text-slate-300 text-xs flex items-center gap-3';
+        document.getElementById('culprit-icon').textContent = '⚡';
+        document.getElementById('culprit-title').textContent = 'System Flow Normal';
+        document.getElementById('culprit-insight').textContent = (culprit && culprit.insight) ? culprit.insight : 'No acute behavioral resistance detected in this window.';
+      }
+
+      // Category Cards
+      const container = document.getElementById('friction-category-cards');
+      if (!container) return;
+
+      container.innerHTML = (data.categories || []).map(cat => {
+        let fColor = 'text-emerald-400 border-emerald-500/40 bg-emerald-500/5';
+        if (cat.avg_friction_score > 65) {
+          fColor = 'text-rose-400 border-rose-500/40 bg-rose-500/5';
+        } else if (cat.avg_friction_score >= 30) {
+          fColor = 'text-amber-400 border-amber-500/40 bg-amber-500/5';
+        }
+
+        return `
+          <div class="p-4 rounded-xl bg-slate-800/50 border border-slate-700/60 hover:border-slate-600 transition">
+            <div class="flex items-center justify-between mb-3">
+              <div class="flex items-center gap-2">
+                <span class="text-xl">${cat.icon || '📋'}</span>
+                <span class="font-bold text-sm text-slate-200">${cat.label}</span>
+              </div>
+              <span class="text-xs px-2.5 py-0.5 rounded-full border mono font-bold ${fColor}">
+                F: ${cat.avg_friction_score.toFixed(0)}
+              </span>
+            </div>
+            <div class="grid grid-cols-2 gap-2 text-xs">
+              <div class="p-2 rounded-lg bg-slate-900/60">
+                <div class="text-slate-400 text-[11px]">Avg Start Latency</div>
+                <div class="text-slate-100 font-bold mono mt-0.5">${cat.avg_start_latency_min.toFixed(1)}m</div>
+              </div>
+              <div class="p-2 rounded-lg bg-slate-900/60">
+                <div class="text-slate-400 text-[11px]">Pass Rate</div>
+                <div class="text-slate-100 font-bold mono mt-0.5">${cat.verification_pass_rate_pct.toFixed(0)}%</div>
+              </div>
+            </div>
+            <div class="flex justify-between items-center mt-3 pt-2 border-t border-slate-700/40 text-[11px] text-slate-400">
+              <span>${cat.total_sessions} session${cat.total_sessions === 1 ? '' : 's'} (${cat.total_focused_minutes}m)</span>
+              <span class="text-amber-400/80">${cat.total_distractions} distraction${cat.total_distractions === 1 ? '' : 's'}</span>
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    // ---------------------------------------------------------------
+    // Tasks
+    // ---------------------------------------------------------------
+    async function loadTasks() {
+      try {
+        tasks = await api('GET', '/tasks');
+        renderTaskList(tasks);
+        renderTaskDropdown(tasks);
+      } catch(e) {
+        document.getElementById('task-list').innerHTML = '<p class="text-red-400 text-sm">Failed to load tasks.</p>';
+      }
+    }
+
+    function renderTaskList(tasks) {
+      const el = document.getElementById('task-list');
+      if (!tasks.length) { el.innerHTML = '<p class="text-slate-500 text-sm italic">No tasks yet.</p>'; return; }
+      const catIcon = { coding: '💻', tnp: '📊', theory: '📖' };
+      const priBadge = { 1: 'text-red-400 bg-red-400/10', 2: 'text-orange-400 bg-orange-400/10', 3: 'text-blue-400 bg-blue-400/10', 4: 'text-slate-400 bg-slate-400/10', 5: 'text-slate-500 bg-slate-500/10' };
+      el.innerHTML = tasks.map(t => `
+        <div class="flex items-center gap-2 px-3 py-2.5 rounded-xl bg-slate-800/50 border border-slate-700/50 hover:border-slate-600 transition group">
+          <span class="text-base">${catIcon[t.category] || '📋'}</span>
+          <div class="flex-1 min-w-0">
+            <p class="text-sm font-medium text-slate-200 truncate">${t.title}</p>
+            <div class="flex gap-2 mt-0.5">
+              <span class="text-xs px-1.5 py-0.5 rounded ${priBadge[t.priority] || 'text-slate-400'}">P${t.priority}</span>
+              <span class="text-xs text-slate-500">${t.estimated_duration_min}min</span>
+              <span class="text-xs text-amber-400">${t.min_goal}↑</span>
+              <span class="text-xs text-blue-400">${t.target_goal}↑</span>
+              <span class="text-xs text-purple-400">${t.stretch_goal}↑</span>
+            </div>
+          </div>
+          <button onclick="selectTask('${t.id}')"
+            class="opacity-0 group-hover:opacity-100 text-xs px-2 py-1 rounded-lg bg-blue-600 hover:bg-blue-500 text-white transition">
+            Select
+          </button>
+        </div>
+      `).join('');
+    }
+
+    function renderTaskDropdown(tasks) {
+      const sel = document.getElementById('qs-task');
+      const prev = sel.value;
+      sel.innerHTML = '<option value="">— Select task —</option>' + tasks.map(t =>
+        `<option value="${t.id}">${t.title} (${t.category})</option>`
+      ).join('');
+      if (prev) sel.value = prev;
+    }
+
+    function selectTask(taskId) {
+      document.getElementById('qs-task').value = taskId;
+      toast('Task selected. Click ▶ Start or ⚡ 5-min.', 'info');
+    }
+
+    async function submitTask(e) {
+      e.preventDefault();
+      const btn = document.getElementById('btn-create-task');
+      btn.disabled = true; btn.textContent = 'Creating…';
+      try {
+        await api('POST', '/tasks', {
+          title: document.getElementById('f-title').value.trim(),
+          category: document.getElementById('f-category').value,
+          priority: parseInt(document.getElementById('f-priority').value),
+          estimated_duration_min: parseInt(document.getElementById('f-duration').value),
+          min_goal: parseInt(document.getElementById('f-min').value),
+          target_goal: parseInt(document.getElementById('f-target').value),
+          stretch_goal: parseInt(document.getElementById('f-stretch').value),
+        });
+        toast('Task created!', 'success');
+        document.getElementById('task-form').reset();
+        document.getElementById('f-min').value = 25;
+        document.getElementById('f-target').value = 50;
+        document.getElementById('f-stretch').value = 90;
+        loadTasks();
+      } catch(e) {
+        toast('Error: ' + e.message, 'error');
+      } finally {
+        btn.disabled = false; btn.textContent = 'Create Task';
+      }
+    }
+
+    // ---------------------------------------------------------------
+    // Sessions
+    // ---------------------------------------------------------------
+    async function startSession(isFiveMin = false) {
+      if (activeSessionId) { toast('Session already active!', 'warning'); return; }
+      const taskId = document.getElementById('qs-task').value;
+      if (!taskId) { toast('Please select a task first.', 'warning'); return; }
+
+      try {
+        const res = await api('POST', '/sessions/start', {
+          task_id: taskId,
+          is_five_min_intervention: isFiveMin,
+        });
+        activeSessionId = res.id;
+        activeTaskId = taskId;
+        activeTaskData = tasks.find(t => t.id === taskId);
+        sessionStartTime = new Date();
+        distCounts = { phone: 0, youtube: 0, overthinking: 0, other: 0 };
+        pasteWarningShown = false;
+
+        // Update UI
+        document.getElementById('hud-idle').classList.add('hidden');
+        document.getElementById('hud-active').classList.remove('hidden');
+        document.getElementById('session-task-name').textContent = activeTaskData?.title || 'Task';
+        updateGoalBanner();
+        if (res.start_latency_min > 0) {
+          const lb = document.getElementById('latency-banner');
+          lb.textContent = `⏱ Started ${res.start_latency_min} min late (latency recorded)`;
+          lb.classList.remove('hidden');
+        }
+
+        startTimer();
+        toast(isFiveMin ? '⚡ 5-min micro-session started!' : '▶ Session started!', 'success');
+        document.getElementById('paste-warning').classList.add('hidden');
+        resetDistCounts();
+      } catch(e) {
+        toast('Failed to start: ' + e.message, 'error');
+      }
+    }
+
+    function updateGoalBanner() {
+      if (!activeTaskData) return;
+      const el = document.getElementById('session-goal-banner');
+      el.innerHTML = `
+        <span class="text-amber-400">Min: ${activeTaskData.min_goal}m</span>
+        <span class="mx-2 text-slate-600">|</span>
+        <span class="text-blue-400">Target: ${activeTaskData.target_goal}m</span>
+        <span class="mx-2 text-slate-600">|</span>
+        <span class="text-purple-400">Stretch: ${activeTaskData.stretch_goal}m</span>
+      `;
+    }
+
+    function startTimer() {
+      clearInterval(timerInterval);
+      timerInterval = setInterval(() => {
+        const elapsed = Math.floor((new Date() - sessionStartTime) / 1000);
+        const h = String(Math.floor(elapsed / 3600)).padStart(2, '0');
+        const m = String(Math.floor((elapsed % 3600) / 60)).padStart(2, '0');
+        const s = String(elapsed % 60).padStart(2, '0');
+        document.getElementById('timer-display').textContent = `${h}:${m}:${s}`;
+
+        // Color progression by goal
+        if (activeTaskData) {
+          const elapsedMin = elapsed / 60;
+          const tc = document.getElementById('timer-circle');
+          if (elapsedMin >= activeTaskData.stretch_goal) {
+            tc.style.borderColor = '#a855f7';
+            document.getElementById('timer-display').style.color = '#a855f7';
+          } else if (elapsedMin >= activeTaskData.target_goal) {
+            tc.style.borderColor = '#3b82f6';
+            document.getElementById('timer-display').style.color = '#3b82f6';
+          } else if (elapsedMin >= activeTaskData.min_goal) {
+            tc.style.borderColor = '#22c55e';
+            document.getElementById('timer-display').style.color = '#22c55e';
+          }
+        }
+      }, 1000);
+    }
+
+    async function endSession() {
+      if (!activeSessionId) return;
+      clearInterval(timerInterval);
+      try {
+        await api('POST', `/sessions/${activeSessionId}/end`, { notes: '' });
+        toast('Session ended. Opening viva modal…', 'success');
+        currentVivaSessionId = activeSessionId;
+        openVivaModal();
+        resetHUD();
+        loadStats();
+      } catch(e) {
+        toast('Failed to end session: ' + e.message, 'error');
+      }
+    }
+
+    function resetHUD() {
+      activeSessionId = null;
+      activeTaskId = null;
+      document.getElementById('hud-idle').classList.remove('hidden');
+      document.getElementById('hud-active').classList.add('hidden');
+      document.getElementById('timer-display').textContent = '00:00:00';
+      document.getElementById('timer-circle').style.borderColor = '';
+      document.getElementById('timer-display').style.color = '';
+      document.getElementById('latency-banner').classList.add('hidden');
+    }
+
+    function resetDistCounts() {
+      ['phone', 'youtube', 'overthinking', 'other'].forEach(t => {
+        distCounts[t] = 0;
+        const el = document.querySelector(`.dist-count-${t}`);
+        if (el) el.textContent = '×0';
+      });
+    }
+
+    // ---------------------------------------------------------------
+    // Distractions
+    // ---------------------------------------------------------------
+    async function logDistraction(type) {
+      if (!activeSessionId) { toast('No active session.', 'warning'); return; }
+      try {
+        await api('POST', '/distractions', { session_id: activeSessionId, interruption_type: type });
+        distCounts[type]++;
+        const el = document.querySelector(`.dist-count-${type}`);
+        if (el) el.textContent = `×${distCounts[type]}`;
+        // Visual shake
+        const btn = document.getElementById(`dist-${type}`);
+        if (btn) { btn.classList.add('shake'); setTimeout(() => btn.classList.remove('shake'), 350); }
+      } catch(e) {
+        toast('Log failed: ' + e.message, 'error');
+      }
+    }
+
+    // ---------------------------------------------------------------
+    // Paste flag polling
+    // ---------------------------------------------------------------
+    async function pollPasteFlag() {
+      if (!activeSessionId || pasteWarningShown) return;
+      // Check session state for paste flag
+      try {
+        const r = await fetch(`/sessions/${activeSessionId}`).then(r => r.ok ? r.json() : null).catch(() => null);
+        if (r && r.pasted_burst_detected && !pasteWarningShown) {
+          pasteWarningShown = true;
+          document.getElementById('paste-warning').classList.remove('hidden');
+          toast('⚠️ Paste burst flagged by VS Code watchdog!', 'warning');
+        }
+      } catch(e) { /* ignore */ }
+    }
+
+    // ---------------------------------------------------------------
+    // Excuse Auditor
+    // ---------------------------------------------------------------
+    function openExcuseModal(scheduleId) {
+      document.getElementById('excuse-schedule-id').value = scheduleId;
+      document.getElementById('excuse-reason').value = '';
+      document.getElementById('excuse-result').classList.add('hidden');
+      document.getElementById('modal-excuse').classList.remove('hidden');
+    }
+
+    async function submitExcuse() {
+      const schedId = document.getElementById('excuse-schedule-id').value;
+      const reason = document.getElementById('excuse-reason').value.trim();
+      if (!reason) { toast('Please state a reason.', 'warning'); return; }
+      const btn = document.getElementById('btn-submit-excuse');
+      btn.disabled = true; btn.textContent = 'Auditing…';
+      try {
+        const res = await api('POST', '/excuses/audit', { schedule_id: schedId, stated_reason: reason });
+        const resultEl = document.getElementById('excuse-result');
+        resultEl.classList.remove('hidden');
+        if (res.is_valid_blocker) {
+          resultEl.className = 'mb-3 px-4 py-3 rounded-xl text-sm border bg-green-500/10 border-green-500/40 text-green-300';
+        } else {
+          resultEl.className = 'mb-3 px-4 py-3 rounded-xl text-sm border bg-red-500/10 border-red-500/40 text-red-300';
+        }
+        resultEl.textContent = res.ai_audit_response;
+        if (res.five_min_floor_enforced) {
+          toast('5-min micro-session enforced. Start now!', 'warning');
+        }
+      } catch(e) {
+        toast('Audit failed: ' + e.message, 'error');
+      } finally {
+        btn.disabled = false; btn.textContent = 'Submit for Audit';
+      }
+    }
+
+    // ---------------------------------------------------------------
+    // Viva Modal
+    // ---------------------------------------------------------------
+    function openVivaModal() {
+      document.getElementById('viva-step-1').classList.remove('hidden');
+      document.getElementById('viva-step-2').classList.add('hidden');
+      document.getElementById('viva-step-3').classList.add('hidden');
+      document.getElementById('viva-proof').value = '';
+      document.getElementById('viva-answer').value = '';
+      document.getElementById('modal-viva').classList.remove('hidden');
+    }
+
+    async function requestViva() {
+      const proof = document.getElementById('viva-proof').value.trim();
+      if (proof.length < 10) { toast('Please paste at least some proof.', 'warning'); return; }
+      const btn = document.getElementById('btn-request-viva');
+      btn.disabled = true; btn.innerHTML = '<span class="spin inline-block">⟳</span> Generating question…';
+      try {
+        const res = await api('POST', `/sessions/${currentVivaSessionId}/request-viva`, { proof_text: proof });
+        document.getElementById('viva-question-box').textContent = res.viva_question;
+        document.getElementById('viva-step-1').classList.add('hidden');
+        document.getElementById('viva-step-2').classList.remove('hidden');
+      } catch(e) {
+        toast('Viva gen failed: ' + e.message, 'error');
+      } finally {
+        btn.disabled = false; btn.textContent = 'Generate Viva Question →';
+      }
+    }
+
+    async function submitViva() {
+      const answer = document.getElementById('viva-answer').value.trim();
+      if (answer.length < 5) { toast('Please type an answer.', 'warning'); return; }
+      const btn = document.getElementById('btn-submit-viva');
+      btn.disabled = true; btn.innerHTML = '<span class="spin inline-block">⟳</span> Grading…';
+      try {
+        const res = await api('POST', `/sessions/${currentVivaSessionId}/submit-viva`, { answer });
+        const passed = res.verification_status === 'verified';
+        const titleEl = document.getElementById('viva-verdict-title');
+        const boxEl = document.getElementById('viva-verdict-box');
+        if (passed) {
+          titleEl.textContent = '✅ PASS – Verified!';
+          titleEl.className = 'text-lg font-bold mb-3 text-green-400';
+          boxEl.className = 'px-5 py-4 rounded-xl border text-sm leading-relaxed mb-4 mono whitespace-pre-wrap verdict-pass bg-green-500/5 text-green-200';
+        } else {
+          titleEl.textContent = '❌ FAIL – Rejected!';
+          titleEl.className = 'text-lg font-bold mb-3 text-red-400';
+          boxEl.className = 'px-5 py-4 rounded-xl border text-sm leading-relaxed mb-4 mono whitespace-pre-wrap verdict-fail bg-red-500/5 text-red-200';
+        }
+        boxEl.textContent = res.viva_feedback;
+        document.getElementById('viva-step-2').classList.add('hidden');
+        document.getElementById('viva-step-3').classList.remove('hidden');
+        loadStats();
+        loadFrictionReport();
+        toast(passed ? '✅ Viva passed!' : '❌ Viva failed. Session rejected.', passed ? 'success' : 'error');
+      } catch(e) {
+        toast('Submit failed: ' + e.message, 'error');
+      } finally {
+        btn.disabled = false; btn.textContent = 'Submit Answer →';
+      }
+    }
+
+    // ---------------------------------------------------------------
+    // Modal utils
+    // ---------------------------------------------------------------
+    function closeModal(id) {
+      document.getElementById(id).classList.add('hidden');
+    }
+
+    // Close on backdrop click
+    ['modal-excuse', 'modal-viva', 'modal-auth'].forEach(id => {
+      const modal = document.getElementById(id);
+      if (modal) {
+        modal.addEventListener('click', (e) => {
+          if (e.target === modal) closeModal(id);
+        });
+      }
+    });
+  </script>
+
+</body>
+</html>

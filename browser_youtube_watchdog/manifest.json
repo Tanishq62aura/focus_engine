@@ -1,0 +1,29 @@
+{
+  "manifest_version": 3,
+  "name": "Focus Engine – YouTube Watchdog",
+  "version": "1.0.0",
+  "description": "Monitors active YouTube tabs during focus sessions and reports off-task videos to the Focus Engine API.",
+
+  "permissions": ["tabs", "activeTab"],
+
+  "host_permissions": [
+    "*://www.youtube.com/*",
+    "http://127.0.0.1:8000/*"
+  ],
+
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+
+  "icons": {
+    "16":  "icons/icon16.png",
+    "48":  "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+
+  "action": {
+    "default_title": "Focus Engine YouTube Watchdog",
+    "default_popup": "popup.html"
+  }
+}

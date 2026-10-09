@@ -1,0 +1,49 @@
+{
+  "name": "focus-engine-integrity",
+  "displayName": "Focus Engine – Integrity Watchdog",
+  "description": "Detects large code paste bursts during focus sessions and reports them to the Focus Engine API for viva scrutiny.",
+  "version": "1.0.0",
+  "publisher": "focus-engine",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": ["Other"],
+  "keywords": ["focus", "productivity", "integrity", "accountability"],
+  "activationEvents": ["onStartupFinished"],
+  "main": "./extension.js",
+  "contributes": {
+    "configuration": {
+      "title": "Focus Engine Integrity Watchdog",
+      "properties": {
+        "focusEngine.apiUrl": {
+          "type": "string",
+          "default": "http://127.0.0.1:8000",
+          "description": "Base URL of the Focus Engine API server."
+        },
+        "focusEngine.pasteThresholdChars": {
+          "type": "number",
+          "default": 40,
+          "minimum": 10,
+          "description": "Minimum characters in a single insertion to be considered a paste burst."
+        },
+        "focusEngine.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable or disable the integrity watchdog."
+        }
+      }
+    },
+    "commands": [
+      {
+        "command": "focusEngine.toggleWatchdog",
+        "title": "Focus Engine: Toggle Integrity Watchdog"
+      },
+      {
+        "command": "focusEngine.testConnection",
+        "title": "Focus Engine: Test API Connection"
+      }
+    ]
+  },
+  "devDependencies": {},
+  "license": "MIT"
+}
