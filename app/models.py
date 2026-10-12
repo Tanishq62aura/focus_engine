@@ -14,6 +14,7 @@ from sqlalchemy import (
     Enum,
     ForeignKey,
     Integer,
+    JSON,
     String,
     Text,
 )
@@ -40,11 +41,7 @@ class Task(Base):
     id = Column(String(36), primary_key=True, default=_new_uuid)
     user_id = Column(String(64), nullable=False, index=True, default="dev-user")
     title = Column(String(255), nullable=False)
-    category = Column(
-        Enum("coding", "tnp", "theory", name="task_category"),
-        nullable=False,
-        default="coding",
-    )
+    category = Column(String(64), nullable=False, default="coding")
     priority = Column(Integer, nullable=False, default=3)  # 1 = highest
     estimated_duration_min = Column(Integer, nullable=False, default=60)
 
@@ -165,3 +162,18 @@ class ExcuseLog(Base):
     ai_audit_response = Column(Text, nullable=True)
 
     schedule = relationship("Schedule", back_populates="excuse_logs")
+
+
+# ---------------------------------------------------------------------------
+# UserSetting
+# ---------------------------------------------------------------------------
+class UserSetting(Base):
+    __tablename__ = "user_settings"
+
+    id = Column(String(36), primary_key=True, default=_new_uuid)
+    user_id = Column(String(64), nullable=False, index=True, default="dev-user")
+    tracks = Column(JSON, nullable=False, default=list)
+    ntfy_topic = Column(String(128), nullable=True)
+    peripheral_boundary_meters = Column(Integer, nullable=False, default=3)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=_utcnow)
+    updated_at = Column(DateTime(timezone=True), nullable=False, default=_utcnow, onupdate=_utcnow)

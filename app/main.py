@@ -17,6 +17,7 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app import crud, mobile_bridge, models, schemas
+from app.routers import settings, support
 from app.auth import (
     AUTH_DISABLED,
     DEV_USER_ID,
@@ -83,6 +84,10 @@ _STATIC_DIR = Path(__file__).parent.parent / "static"
 if _STATIC_DIR.exists():
     app.mount("/static", StaticFiles(directory=str(_STATIC_DIR)), name="static")
 
+# Mount API routers
+app.include_router(settings.router, prefix="/api/settings", tags=["settings"])
+app.include_router(support.router, prefix="/api/support", tags=["support"])
+
 
 # ---------------------------------------------------------------------------
 # Root – serve the frontend HUD
@@ -92,7 +97,14 @@ async def serve_frontend():
     index = _STATIC_DIR / "index.html"
     if not index.exists():
         return JSONResponse({"message": "Focus Engine API is running. Frontend not found."})
-    return FileResponse(str(index))
+    return FileResponse(
+        str(index),
+        headers={
+            "Cache-Control": "no-cache, no-store, must-revalidate",
+            "Pragma": "no-cache",
+            "Expires": "0",
+        },
+    )
 
 
 # ---------------------------------------------------------------------------

@@ -15,7 +15,7 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 # ---------------------------------------------------------------------------
 class TaskCreate(BaseModel):
     title: str = Field(..., min_length=1, max_length=255)
-    category: Literal["coding", "tnp", "theory"] = "coding"
+    category: str = Field(default="coding", min_length=1, max_length=64)
     priority: int = Field(default=3, ge=1, le=5)
     estimated_duration_min: int = Field(default=60, ge=5)
     min_goal: int = Field(default=25, ge=1)
@@ -306,4 +306,41 @@ class ExcuseClusterReport(BaseModel):
     clusters: list[ExcuseClusterItem]
     tracks: dict[str, TrackResistanceItem]
     meta: dict[str, Any]
+
+
+# ---------------------------------------------------------------------------
+# Dynamic Study Tracks & User Settings
+# ---------------------------------------------------------------------------
+class TrackConfig(BaseModel):
+    id: str = Field(..., min_length=1, max_length=64)
+    label: str = Field(..., min_length=1, max_length=128)
+    default_duration_min: int = Field(default=60, ge=5, le=360)
+    requires_code_watchdog: bool = Field(default=False)
+    friction_threshold: int = Field(default=65, ge=1, le=100)
+    verification_prompt_override: Optional[str] = None
+
+
+class UserSettingsRead(BaseModel):
+    user_id: str
+    tracks: list[TrackConfig]
+    ntfy_topic: Optional[str] = None
+    peripheral_boundary_meters: int = 3
+
+
+class UserSettingsUpdate(BaseModel):
+    ntfy_topic: Optional[str] = None
+    peripheral_boundary_meters: Optional[int] = Field(default=None, ge=1, le=20)
+
+
+# ---------------------------------------------------------------------------
+# Embedded AI Support & Query Assistant
+# ---------------------------------------------------------------------------
+class SupportChatRequest(BaseModel):
+    message: str = Field(..., min_length=1, max_length=4000)
+    session_id: Optional[str] = None
+
+
+class SupportChatResponse(BaseModel):
+    reply: str
+    session_id: Optional[str] = None
 

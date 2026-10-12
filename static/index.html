@@ -115,7 +115,7 @@
   ============================================================ -->
   <header class="glass rounded-2xl p-4 mb-6 flex flex-wrap items-center justify-between gap-4">
     <div class="flex items-center gap-3">
-      <div class="w-10 h-10 rounded-xl bg-zinc-800 border border-zinc-700 flex items-center justify-center text-lg font-black text-zinc-100 shadow-sm">⚡</div>
+      <div class="w-10 h-10 rounded-xl bg-zinc-800 border border-zinc-700 flex items-center justify-center text-zinc-100 shadow-sm"><svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg></div>
       <div>
         <h1 class="text-lg font-bold grad-text">Focus Engine</h1>
         <p class="text-xs text-zinc-400 mono">Behavioral Accountability System</p>
@@ -150,12 +150,22 @@
         <svg class="w-3.5 h-3.5" viewBox="0 0 24 24"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"/></svg>
         Sign in with Google
       </button>
-      <button id="btn-quick-dev" onclick="quickDevLogin()" class="px-3 py-1.5 text-xs font-mono font-semibold rounded bg-zinc-800 text-zinc-200 border border-zinc-700 hover:bg-zinc-700">⚡ Dev Bypass</button>
+      <button id="btn-quick-dev" onclick="quickDevLogin()" class="px-3 py-1.5 text-xs font-mono font-semibold rounded bg-zinc-800 text-zinc-200 border border-zinc-700 hover:bg-zinc-700 flex items-center gap-1.5"><svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg><span>Dev Bypass</span></button>
       <button id="btn-logout" onclick="logout()" class="hidden text-zinc-400 hover:text-rose-400 text-xs px-2.5 py-1.5 rounded-lg hover:bg-zinc-800 transition">
         Sign Out
       </button>
-      <button id="btn-refresh-stats" onclick="loadStats()" class="text-zinc-400 hover:text-zinc-100 transition text-sm px-3 py-1.5 rounded-lg hover:bg-zinc-800">
-        ↻ Refresh
+      <button id="btn-open-settings" onclick="openSettingsDrawer()" class="text-zinc-400 hover:text-zinc-100 transition text-xs px-2.5 py-1.5 rounded-lg hover:bg-zinc-800 flex items-center gap-1.5 border border-zinc-800 hover:border-zinc-700" title="Study Tracks & Engine Settings">
+        <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="4" x2="20" y1="21" y2="21"/><line x1="4" x2="20" y1="14" y2="14"/><line x1="4" x2="20" y1="7" y2="7"/>
+          <circle cx="8" cy="21" r="2"/><circle cx="16" cy="14" r="2"/><circle cx="10" cy="7" r="2"/>
+        </svg>
+        <span>Tracks & Settings</span>
+      </button>
+      <button id="btn-refresh-stats" onclick="loadStats()" class="text-zinc-400 hover:text-zinc-100 transition text-xs px-2.5 py-1.5 rounded-lg hover:bg-zinc-800 flex items-center gap-1.5">
+        <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/><path d="M16 21h5v-5"/>
+        </svg>
+        <span>Refresh</span>
       </button>
     </div>
   </header>
@@ -171,7 +181,7 @@
       <!-- Task Creation Form -->
       <section class="glass rounded-2xl p-5">
         <h2 class="text-base font-bold text-zinc-200 mb-4 flex items-center gap-2">
-          <span class="text-zinc-100 font-bold">＋</span> New Task
+          <svg class="w-4 h-4 text-zinc-100" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> New Task
         </h2>
         <form id="task-form" onsubmit="createTask(event)" class="space-y-3">
           <input id="f-title" type="text" placeholder="Task title *" required
@@ -179,9 +189,9 @@
 
           <div class="grid grid-cols-2 gap-2">
             <select id="f-category" class="bg-zinc-900/80 border border-zinc-700/80 rounded-lg px-3 py-2.5 text-sm text-zinc-100 focus:outline-none focus:border-zinc-400 focus:ring-1 focus:ring-zinc-400 transition">
-              <option value="coding">💻 Coding</option>
-              <option value="tnp">📊 T&P Aptitude</option>
-              <option value="theory">📖 Theory</option>
+              <option value="coding">Coding & Systems</option>
+              <option value="tnp">T&P Aptitude</option>
+              <option value="theory">CS Theory & Concepts</option>
             </select>
             <select id="f-priority" class="bg-zinc-900/80 border border-zinc-700/80 rounded-lg px-3 py-2.5 text-sm text-zinc-100 focus:outline-none focus:border-zinc-400 focus:ring-1 focus:ring-zinc-400 transition">
               <option value="1">P1 – Critical</option>
@@ -229,7 +239,7 @@
       <!-- Task List -->
       <section class="glass rounded-2xl p-5">
         <h2 class="text-base font-bold text-zinc-200 mb-3 flex items-center gap-2">
-          <span class="text-zinc-400">◈</span> Tasks
+          <svg class="w-4 h-4 text-zinc-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg> Tasks
         </h2>
         <div id="task-list" class="space-y-2 max-h-[360px] overflow-y-auto pr-1">
           <p class="text-slate-500 text-sm italic">Loading tasks…</p>
@@ -244,12 +254,12 @@
       <!-- Active Focus HUD -->
       <section id="hud-section" class="glass rounded-2xl p-6">
         <h2 class="text-base font-bold text-zinc-200 mb-5 flex items-center gap-2">
-          <span class="text-emerald-500">●</span> Focus HUD
+          <span class="w-2.5 h-2.5 rounded-full bg-emerald-500 inline-block"></span> Focus HUD
         </h2>
 
         <!-- No-session state -->
         <div id="hud-idle" class="text-center py-12">
-          <div class="text-6xl mb-4">🎯</div>
+          <div class="w-16 h-16 mx-auto mb-4 text-zinc-600 flex items-center justify-center"><svg class="w-14 h-14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg></div>
           <p class="text-zinc-400 mb-2">No active session.</p>
           <p class="text-zinc-500 text-sm">Select a task below and click <strong class="text-zinc-200">Start Session</strong>.</p>
         </div>
@@ -276,26 +286,26 @@
             <div class="grid grid-cols-4 gap-2">
               <button onclick="logDistraction('phone')" id="dist-phone"
                 class="dist-btn py-3 rounded-xl bg-rose-500/10 border border-rose-500/30 hover:bg-rose-500/20 text-center transition active:scale-95 flex flex-col items-center gap-1">
-                <span class="text-xl">📱</span>
-                <span class="text-xs text-rose-400">Phone</span>
+                <svg class="w-5 h-5 text-rose-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect width="14" height="20" x="5" y="2" rx="2" ry="2"/><path d="M12 18h.01"/></svg>
+                <span class="text-xs text-rose-400 font-medium">Phone</span>
                 <span class="text-xs text-zinc-500 mono dist-count-phone">×0</span>
               </button>
               <button onclick="logDistraction('youtube')" id="dist-youtube"
                 class="dist-btn py-3 rounded-xl bg-rose-500/10 border border-rose-500/30 hover:bg-rose-500/20 text-center transition active:scale-95 flex flex-col items-center gap-1">
-                <span class="text-xl">▶️</span>
-                <span class="text-xs text-rose-400">YouTube</span>
+                <svg class="w-5 h-5 text-rose-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><polygon points="6 3 20 12 6 21 6 3"/></svg>
+                <span class="text-xs text-rose-400 font-medium">YouTube</span>
                 <span class="text-xs text-zinc-500 mono dist-count-youtube">×0</span>
               </button>
               <button onclick="logDistraction('overthinking')" id="dist-overthinking"
                 class="dist-btn py-3 rounded-xl bg-amber-500/10 border border-amber-500/30 hover:bg-amber-500/20 text-center transition active:scale-95 flex flex-col items-center gap-1">
-                <span class="text-xl">🌀</span>
-                <span class="text-xs text-amber-400">Overthink</span>
+                <svg class="w-5 h-5 text-amber-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
+                <span class="text-xs text-amber-400 font-medium">Overthink</span>
                 <span class="text-xs text-zinc-500 mono dist-count-overthinking">×0</span>
               </button>
               <button onclick="logDistraction('other')" id="dist-other"
                 class="dist-btn py-3 rounded-xl bg-zinc-800/80 border border-zinc-700/80 hover:bg-zinc-750 text-center transition active:scale-95 flex flex-col items-center gap-1">
-                <span class="text-xl">💭</span>
-                <span class="text-xs text-zinc-400">Other</span>
+                <svg class="w-5 h-5 text-zinc-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+                <span class="text-xs text-zinc-400 font-medium">Other</span>
                 <span class="text-xs text-zinc-500 mono dist-count-other">×0</span>
               </button>
             </div>
@@ -304,12 +314,12 @@
           <!-- Complete & Submit -->
           <button onclick="endSession()" id="btn-end-session"
             class="w-full bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl py-3.5 text-sm font-bold transition-all duration-200 active:scale-95 shadow-md">
-            ✅ Complete & Submit Proof
+            <span class="flex items-center justify-center gap-2"><svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg><span>Complete & Submit Proof</span></span>
           </button>
 
           <!-- Paste Warning Banner -->
           <div id="paste-warning" class="hidden mt-3 px-4 py-3 rounded-xl bg-rose-500/10 border border-rose-500/40 text-rose-300 text-sm text-center">
-            ⚠️ <strong>Paste burst detected</strong> by VS Code watchdog. Viva will include paste justification.
+            <span class="flex items-center justify-center gap-2"><svg class="w-4 h-4 text-rose-400 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg><span><strong>Paste burst detected</strong> by VS Code watchdog. Viva defense will include paste justification.</span></span>
           </div>
         </div>
       </section>
@@ -317,7 +327,7 @@
       <!-- Quick Start Panel -->
       <section class="glass rounded-2xl p-5">
         <h2 class="text-base font-bold text-zinc-200 mb-3 flex items-center gap-2">
-          <span class="text-emerald-400">▶</span> Quick Start
+          <svg class="w-4 h-4 text-emerald-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="6 3 20 12 6 21 6 3"/></svg> Quick Start
         </h2>
         <div class="grid grid-cols-2 gap-3">
           <div>
@@ -330,12 +340,14 @@
             <label class="text-xs text-zinc-400 mb-1 block">Mode</label>
             <div class="flex gap-2">
               <button onclick="startSession(false)" id="btn-start-normal"
-                class="flex-1 bg-zinc-100 hover:bg-white text-zinc-950 rounded-lg py-2 text-sm font-bold transition active:scale-95 shadow-sm">
-                ▶ Start
+                class="flex-1 bg-zinc-100 hover:bg-white text-zinc-950 rounded-lg py-2 text-sm font-bold transition active:scale-95 shadow-sm flex items-center justify-center gap-1.5">
+                <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="currentColor"><polygon points="6 3 20 12 6 21 6 3"/></svg>
+                <span>Start</span>
               </button>
               <button onclick="startSession(true)" id="btn-start-5min"
-                class="flex-1 bg-amber-600 hover:bg-amber-500 text-white rounded-lg py-2 text-sm font-bold transition active:scale-95 shadow-sm" title="5-min micro-session floor">
-                ⚡ 5-min
+                class="flex-1 bg-amber-600 hover:bg-amber-500 text-white rounded-lg py-2 text-sm font-bold transition active:scale-95 shadow-sm flex items-center justify-center gap-1.5" title="5-min micro-session floor">
+                <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+                <span>5-min</span>
               </button>
             </div>
           </div>
@@ -345,7 +357,7 @@
       <!-- Today's Sessions Log -->
       <section class="glass rounded-2xl p-5">
         <h2 class="text-base font-bold text-zinc-200 mb-3 flex items-center gap-2">
-          <span class="text-zinc-400">📋</span> Today's Sessions
+          <svg class="w-4 h-4 text-zinc-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect width="8" height="4" x="8" y="2" rx="1" ry="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><path d="M9 12h6"/><path d="M9 16h6"/></svg> Today's Sessions
         </h2>
         <div id="sessions-log" class="space-y-2 max-h-48 overflow-y-auto pr-1 text-sm text-zinc-400 italic">
           Loading…
@@ -361,7 +373,7 @@
   <section id="friction-analytics-section" class="glass rounded-2xl p-6 my-6">
     <div class="flex items-center justify-between mb-4 flex-wrap gap-2">
       <div class="flex items-center gap-3">
-        <div class="w-9 h-9 rounded-xl bg-zinc-800 border border-zinc-700 flex items-center justify-center text-base font-black text-zinc-100 shadow-sm">📉</div>
+        <div class="w-9 h-9 rounded-xl bg-zinc-800 border border-zinc-700 flex items-center justify-center text-zinc-100 shadow-sm"><svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><polyline points="22 17 13.5 8.5 8.5 13.5 2 7"/><polyline points="16 17 22 17 22 11"/></svg></div>
         <div>
           <h2 class="text-base font-bold text-zinc-100 flex items-center gap-2">
             Friction & Behavioral Audit
@@ -382,7 +394,7 @@
 
     <!-- Bottleneck Culprit Callout Banner -->
     <div id="friction-culprit-banner" class="mb-5 p-3.5 rounded-xl border border-amber-500/30 bg-amber-500/10 text-amber-200 text-xs flex items-center gap-3">
-      <span class="text-xl" id="culprit-icon">⚠️</span>
+      <span class="text-amber-400 flex items-center justify-center" id="culprit-icon"><svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg></span>
       <div class="flex-1 min-w-0">
         <span class="font-bold tracking-wide uppercase text-[11px] text-amber-300 block" id="culprit-title">Primary Behavioral Bottleneck</span>
         <span id="culprit-insight" class="text-zinc-300 truncate block">Loading behavioral friction analysis…</span>
@@ -442,7 +454,7 @@
   <!-- Excuse Auditor Modal -->
   <div id="modal-excuse" class="hidden fixed inset-0 z-50 flex items-end justify-center p-4 sm:items-center" style="background:rgba(0,0,0,0.85);backdrop-filter:blur(8px)">
     <div class="modal-enter glass rounded-2xl w-full max-w-lg p-6 border border-zinc-700">
-      <h3 class="text-lg font-bold text-rose-400 mb-1">🚨 Excuse Auditor</h3>
+      <h3 class="text-lg font-bold text-rose-400 mb-1 flex items-center gap-2"><svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg><span>Excuse Auditor</span></h3>
       <p class="text-sm text-zinc-400 mb-4">You've snoozed twice. State your reason. It will be evaluated for validity.</p>
       <input id="excuse-schedule-id" type="hidden" />
       <textarea id="excuse-reason" rows="3" placeholder="State your reason honestly…"
@@ -467,7 +479,7 @@
 
       <!-- Step 1: Paste Proof -->
       <div id="viva-step-1">
-        <h3 class="text-lg font-bold text-zinc-100 mb-1">📎 Step 1 – Submit Proof</h3>
+        <h3 class="text-lg font-bold text-zinc-100 mb-1 flex items-center gap-2"><svg class="w-5 h-5 text-zinc-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg><span>Step 1 – Submit Proof</span></h3>
         <p class="text-sm text-zinc-400 mb-3">Paste your code snippet, theory notes, or aptitude scorecard below. The AI will generate a viva question based on this.</p>
         <textarea id="viva-proof" rows="8" placeholder="Paste your code / notes / scorecard here…"
           class="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-zinc-400 focus:ring-1 focus:ring-zinc-400 transition mb-3 resize-y mono font-medium"></textarea>
@@ -482,7 +494,7 @@
 
       <!-- Step 2: Answer the Question -->
       <div id="viva-step-2" class="hidden">
-        <h3 class="text-lg font-bold text-zinc-100 mb-1">🎯 Step 2 – Answer Viva Question</h3>
+        <h3 class="text-lg font-bold text-zinc-100 mb-1 flex items-center gap-2"><svg class="w-5 h-5 text-zinc-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg><span>Step 2 – Answer Viva Question</span></h3>
         <div id="viva-question-box" class="mb-4 px-4 py-3 rounded-xl bg-zinc-900 border border-zinc-700 text-zinc-200 text-sm mono leading-relaxed"></div>
         <textarea id="viva-answer" rows="5" placeholder="Type your answer here. Be precise and technical."
           class="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-zinc-400 focus:ring-1 focus:ring-zinc-400 transition mb-3 resize-y"></textarea>
@@ -511,14 +523,14 @@
     <div class="modal-enter glass rounded-2xl w-full max-w-lg p-6 space-y-4 border border-zinc-700">
       <div class="flex items-center justify-between pb-3 border-b border-zinc-800">
         <div class="flex items-center gap-2">
-          <span class="text-2xl">⚡</span>
+          <svg class="w-6 h-6 text-amber-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
           <h3 class="text-lg font-bold text-amber-300">Micro-Start Initiation Gate</h3>
         </div>
-        <button onclick="closeModal('modal-micro-start')" class="text-zinc-400 hover:text-white text-lg">✕</button>
+        <button onclick="closeModal('modal-micro-start')" class="text-zinc-400 hover:text-white p-1 rounded hover:bg-zinc-800"><svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
       </div>
 
       <div class="p-4 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-200 text-sm space-y-2">
-        <p class="font-semibold text-amber-300">🚨 High Friction Track Resistance Detected (>75 Score)</p>
+        <p class="font-semibold text-amber-300 flex items-center gap-2"><svg class="w-4 h-4 text-amber-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg><span>High Friction Track Resistance Detected (>75 Score)</span></p>
         <p class="text-xs text-zinc-300">
           This track exhibits high initiation drop-off. The default block duration has been capped to a <span class="font-bold text-white">25-minute Pomodoro</span>. Physical phone isolation is enforced (>3m boundary).
         </p>
@@ -556,9 +568,9 @@
     <div class="modal-enter glass rounded-2xl w-full max-w-md p-6 space-y-4 border border-zinc-700">
       <div class="flex items-center justify-between">
         <h3 class="text-lg font-bold grad-text flex items-center gap-2">
-          <span>⚡</span> Supabase & Google Auth
+          <svg class="w-4 h-4 text-zinc-100" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg> Supabase & Google Auth
         </h3>
-        <button onclick="closeModal('modal-auth')" class="text-zinc-400 hover:text-white text-lg">✕</button>
+        <button onclick="closeModal('modal-auth')" class="text-zinc-400 hover:text-white p-1 rounded hover:bg-zinc-800"><svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
       </div>
       <p class="text-xs text-zinc-400 leading-relaxed">
         Sign in to isolate and synchronize your focus sessions, excuses, and viva verifications with hosted Supabase PostgreSQL.
@@ -573,7 +585,7 @@
 
         <button id="btn-dev-login" onclick="loginWithDevToken()"
           class="w-full bg-zinc-800 hover:bg-zinc-700 text-zinc-200 border border-zinc-700 rounded-xl py-2.5 text-xs font-semibold flex items-center justify-center gap-2 transition active:scale-95 shadow">
-          <span>⚡</span> Quick Sign In as Dev User (Local Bypass)
+          <span class="flex items-center gap-2"><svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg><span>Quick Sign In as Dev User (Local Bypass)</span></span>
         </button>
 
         <div class="relative flex py-2 items-center">
@@ -612,6 +624,179 @@
     </div>
   </div>
 
+  <!-- ============================================================
+       SETTINGS DRAWER (Dynamic Study Tracks & Environment)
+  ============================================================ -->
+  <div id="drawer-settings" class="hidden fixed inset-0 z-50 overflow-hidden">
+    <!-- Backdrop -->
+    <div onclick="closeSettingsDrawer()" class="fixed inset-0 bg-black/80 backdrop-blur-sm transition-opacity"></div>
+    
+    <div class="fixed inset-y-0 right-0 max-w-full flex pl-10">
+      <div class="w-screen max-w-md bg-zinc-950 border-l border-zinc-800 p-6 flex flex-col shadow-2xl overflow-y-auto">
+        <!-- Header -->
+        <div class="flex items-center justify-between pb-4 border-b border-zinc-800">
+          <div class="flex items-center gap-2.5">
+            <div class="w-8 h-8 rounded-lg bg-zinc-900 border border-zinc-700 flex items-center justify-center text-zinc-100">
+              <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                <line x1="4" x2="20" y1="21" y2="21"/><line x1="4" x2="20" y1="14" y2="14"/><line x1="4" x2="20" y1="7" y2="7"/>
+                <circle cx="8" cy="21" r="2"/><circle cx="16" cy="14" r="2"/><circle cx="10" cy="7" r="2"/>
+              </svg>
+            </div>
+            <div>
+              <h2 class="text-base font-bold text-zinc-100">Engine Settings</h2>
+              <p class="text-xs text-zinc-400">Dynamic study tracks & boundaries</p>
+            </div>
+          </div>
+          <button onclick="closeSettingsDrawer()" class="text-zinc-400 hover:text-white p-1 rounded-lg hover:bg-zinc-900">
+            <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          </button>
+        </div>
+
+        <div class="space-y-6 pt-5 flex-1">
+          <!-- Section 1: Study Tracks -->
+          <div>
+            <div class="flex items-center justify-between mb-3">
+              <h3 class="text-xs font-bold uppercase tracking-wider text-zinc-300">Configured Study Tracks</h3>
+              <span id="settings-track-count" class="text-[11px] mono px-2 py-0.5 rounded bg-zinc-900 text-zinc-400 border border-zinc-800">0 tracks</span>
+            </div>
+            <div id="settings-track-list" class="space-y-2 mb-4">
+              <p class="text-xs text-zinc-500 italic">Loading track definitions…</p>
+            </div>
+
+            <!-- Add Track Sub-form -->
+            <div class="p-4 rounded-xl bg-zinc-900/60 border border-zinc-800 space-y-3">
+              <h4 class="text-xs font-bold text-zinc-200">Add / Customize Track</h4>
+              <div class="space-y-2.5 text-xs">
+                <div>
+                  <label class="text-zinc-400 block mb-1">Track Identifier (slug)</label>
+                  <input id="set-track-id" type="text" placeholder="e.g. writing, design, math, research"
+                    class="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-zinc-200 placeholder-zinc-600 focus:outline-none focus:border-zinc-400 mono" />
+                </div>
+                <div>
+                  <label class="text-zinc-400 block mb-1">Display Label</label>
+                  <input id="set-track-label" type="text" placeholder="e.g. Technical Writing"
+                    class="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-zinc-200 placeholder-zinc-600 focus:outline-none focus:border-zinc-400" />
+                </div>
+                <div class="grid grid-cols-2 gap-2">
+                  <div>
+                    <label class="text-zinc-400 block mb-1">Default Duration (min)</label>
+                    <input id="set-track-duration" type="number" value="45" min="5"
+                      class="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-zinc-200 focus:outline-none focus:border-zinc-400 mono" />
+                  </div>
+                  <div>
+                    <label class="text-zinc-400 block mb-1">Friction Floor (F)</label>
+                    <input id="set-track-friction" type="number" value="65" min="0" max="100"
+                      class="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-zinc-200 focus:outline-none focus:border-zinc-400 mono" />
+                  </div>
+                </div>
+                <div>
+                  <label class="text-zinc-400 block mb-1">Watchdog Mode</label>
+                  <select id="set-track-watchdog" class="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-zinc-200 focus:outline-none focus:border-zinc-400">
+                    <option value="false">Conceptual Notes / Viva Defense (Non-code)</option>
+                    <option value="true">Code Watchdog (VS Code paste detection)</option>
+                  </select>
+                </div>
+                <div>
+                  <label class="text-zinc-400 block mb-1">Custom Viva Evaluation Criteria</label>
+                  <textarea id="set-track-prompt" rows="2" placeholder="e.g. Verify logical synthesis, conceptual accuracy, and precision of deductions."
+                    class="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-zinc-200 placeholder-zinc-600 focus:outline-none focus:border-zinc-400 resize-none"></textarea>
+                </div>
+                <button type="button" onclick="saveCustomTrack()" id="btn-save-track"
+                  class="w-full mt-2 bg-zinc-100 hover:bg-white text-zinc-950 font-bold rounded-lg py-2.5 text-xs transition active:scale-95 shadow-sm">
+                  Add / Update Track
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Section 2: Boundaries & Webhooks -->
+          <div class="p-4 rounded-xl bg-zinc-900/60 border border-zinc-800 space-y-3">
+            <h3 class="text-xs font-bold uppercase tracking-wider text-zinc-300">Environmental & Webhook Limits</h3>
+            <div class="space-y-2.5 text-xs">
+              <div>
+                <label class="text-zinc-400 block mb-1">Peripheral Physical Boundary (meters)</label>
+                <input id="set-boundary-meters" type="number" value="3" min="1" max="50"
+                  class="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-zinc-200 focus:outline-none focus:border-zinc-400 mono" />
+              </div>
+              <div>
+                <label class="text-zinc-400 block mb-1">ntfy Webhook Topic</label>
+                <input id="set-ntfy-topic" type="text" placeholder="focus_tanishq_engine"
+                  class="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-zinc-200 placeholder-zinc-600 focus:outline-none focus:border-zinc-400 mono" />
+              </div>
+              <button type="button" onclick="saveEnvironmentalSettings()" id="btn-save-env"
+                class="w-full mt-1 bg-zinc-800 hover:bg-zinc-700 text-zinc-100 border border-zinc-700 font-semibold rounded-lg py-2 text-xs transition active:scale-95">
+                Save Environment Settings
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============================================================
+       FLOATING AI SUPPORT DRAWER & TRIGGER
+  ============================================================ -->
+  <!-- Floating Trigger Button -->
+  <button id="btn-open-support" onclick="toggleSupportDrawer()"
+    class="fixed bottom-6 right-6 z-40 w-12 h-12 rounded-full bg-zinc-900 hover:bg-zinc-800 border border-zinc-700 text-zinc-100 flex items-center justify-center shadow-2xl transition-all duration-200 active:scale-95 group hover:border-zinc-500"
+    title="Focus Execution Coach">
+    <svg class="w-5 h-5 text-zinc-200 group-hover:text-white transition" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+    </svg>
+  </button>
+
+  <!-- Slide-up AI Chat Panel -->
+  <div id="drawer-support-chat" class="hidden fixed bottom-20 right-6 w-96 max-w-[calc(100vw-2rem)] h-[520px] max-h-[80vh] z-50 glass rounded-2xl border border-zinc-700 flex flex-col shadow-2xl overflow-hidden">
+    <!-- Header -->
+    <div class="p-3.5 bg-zinc-950/90 border-b border-zinc-800 flex items-center justify-between">
+      <div class="flex items-center gap-2">
+        <div class="w-7 h-7 rounded-lg bg-zinc-900 border border-zinc-700 flex items-center justify-center text-zinc-100">
+          <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+            <polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/>
+          </svg>
+        </div>
+        <div>
+          <h3 class="text-xs font-bold text-zinc-100 flex items-center gap-1.5">
+            Focus AI Coach
+            <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 inline-block"></span>
+          </h3>
+          <p class="text-[10px] text-zinc-400">Execution & Resistance Guidance</p>
+        </div>
+      </div>
+      <button onclick="toggleSupportDrawer()" class="text-zinc-400 hover:text-white p-1 rounded-lg hover:bg-zinc-850">
+        <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+
+    <!-- Quick Prompt Chips -->
+    <div class="p-2 bg-zinc-900/60 border-b border-zinc-800 flex gap-1.5 overflow-x-auto text-[11px] whitespace-nowrap">
+      <button onclick="sendQuickPrompt('How does viva defense evaluate my notes?')" class="px-2 py-1 rounded bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-300">Viva criteria</button>
+      <button onclick="sendQuickPrompt('Break down a 45-minute reading goal')" class="px-2 py-1 rounded bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-300">Break down goal</button>
+      <button onclick="sendQuickPrompt('How do I beat initiation resistance right now?')" class="px-2 py-1 rounded bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-300">Beat resistance</button>
+    </div>
+
+    <!-- Messages Container -->
+    <div id="support-chat-messages" class="flex-1 p-3.5 space-y-3 overflow-y-auto text-xs">
+      <div class="p-3 rounded-xl bg-zinc-900/90 border border-zinc-800 text-zinc-300 space-y-1">
+        <div class="font-bold text-zinc-200">Execution Coach Online</div>
+        <p class="text-zinc-400 leading-relaxed">
+          Ask questions regarding friction mechanics, viva defense criteria for non-coding tracks, or atomic session breakdowns.
+        </p>
+      </div>
+    </div>
+
+    <!-- Input Form -->
+    <form onsubmit="handleSupportSend(event)" class="p-3 bg-zinc-950/90 border-t border-zinc-800 flex gap-2">
+      <input id="support-input" type="text" placeholder="Ask execution question…" required
+        class="flex-1 bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-xs text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-zinc-400" />
+      <button type="submit" id="btn-support-send"
+        class="bg-zinc-100 hover:bg-white text-zinc-950 px-3 py-2 rounded-lg font-bold text-xs transition active:scale-95 flex items-center justify-center">
+        <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+      </button>
+    </form>
+  </div>
+
   <!-- Toast container -->
   <div id="toast-container" class="fixed top-4 right-4 z-[100] space-y-2 w-72"></div>
 
@@ -623,15 +808,254 @@
     // ---------------------------------------------------------------
     // PWA Service Worker Registration
     // ---------------------------------------------------------------
+    // PWA Service Worker Registration & Cache Invalidation
+    // ---------------------------------------------------------------
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', () => {
         navigator.serviceWorker.register('/static/sw.js')
-          .then(reg => console.log('[PWA] Service worker registered:', reg.scope))
+          .then(reg => {
+            console.log('[PWA] Service worker registered:', reg.scope);
+            reg.update();
+          })
           .catch(err => console.warn('[PWA] SW registration failed:', err));
       });
+      if ('caches' in window) {
+        caches.keys().then(keys => {
+          keys.forEach(k => {
+            if (k.includes('v1') || k.includes('v2') || k.includes('v3')) {
+              caches.delete(k);
+            }
+          });
+        });
+      }
     }
 
     // ---------------------------------------------------------------
+    // Track SVG Glyphs Helper
+    // ---------------------------------------------------------------
+    function getTrackSvg(catId, className = 'w-4 h-4') {
+      const id = (catId || '').toLowerCase();
+      if (id === 'coding') {
+        return `<svg class="${className}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>`;
+      } else if (id === 'theory') {
+        return `<svg class="${className}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>`;
+      } else if (id === 'tnp' || id === 'tp_aptitude') {
+        return `<svg class="${className}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/><line x1="9" y1="1" x2="9" y2="4"/><line x1="15" y1="1" x2="15" y2="4"/><line x1="9" y1="20" x2="9" y2="23"/><line x1="15" y1="20" x2="15" y2="23"/><line x1="20" y1="9" x2="23" y2="9"/><line x1="20" y1="14" x2="23" y2="14"/><line x1="1" y1="9" x2="4" y2="9"/><line x1="1" y1="14" x2="4" y2="14"/></svg>`;
+      } else if (id === 'writing') {
+        return `<svg class="${className}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>`;
+      } else if (id === 'research') {
+        return `<svg class="${className}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>`;
+      } else if (id === 'math') {
+        return `<svg class="${className}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><line x1="5" y1="12" x2="19" y2="12"/><line x1="12" y1="5" x2="12" y2="19"/></svg>`;
+      } else {
+        return `<svg class="${className}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg>`;
+      }
+    }
+
+    // ---------------------------------------------------------------
+    // Dynamic Tracks & Settings Logic
+    // ---------------------------------------------------------------
+    let appTracks = [];
+
+    async function loadTracks() {
+      try {
+        const res = await api('GET', '/api/settings/tracks');
+        if (Array.isArray(res) && res.length > 0) {
+          appTracks = res;
+        }
+      } catch (err) {
+        console.warn('Failed to load dynamic tracks from API:', err);
+        if (!appTracks.length) {
+          appTracks = [
+            { id: 'coding', label: 'Coding & Systems', default_duration_min: 60, requires_code_watchdog: true, friction_threshold: 65 },
+            { id: 'tnp', label: 'T&P Aptitude', default_duration_min: 45, requires_code_watchdog: false, friction_threshold: 75 },
+            { id: 'theory', label: 'CS Theory & Concepts', default_duration_min: 50, requires_code_watchdog: false, friction_threshold: 70 },
+            { id: 'writing', label: 'Technical Writing & Docs', default_duration_min: 45, requires_code_watchdog: false, friction_threshold: 60 },
+            { id: 'research', label: 'Deep Research & Analysis', default_duration_min: 60, requires_code_watchdog: false, friction_threshold: 60 },
+          ];
+        }
+      }
+      renderCategoryDropdown();
+      renderSettingsTracksList();
+    }
+
+    function renderCategoryDropdown() {
+      const catSelect = document.getElementById('f-category');
+      if (!catSelect) return;
+      const currentVal = catSelect.value;
+      catSelect.innerHTML = appTracks.map(t =>
+        `<option value="${t.id}">${t.label}</option>`
+      ).join('');
+      if (currentVal && appTracks.some(t => t.id === currentVal)) {
+        catSelect.value = currentVal;
+      }
+    }
+
+    function renderSettingsTracksList() {
+      const listEl = document.getElementById('settings-track-list');
+      const countEl = document.getElementById('settings-track-count');
+      if (countEl) countEl.textContent = `${appTracks.length} track${appTracks.length === 1 ? '' : 's'}`;
+      if (!listEl) return;
+      listEl.innerHTML = appTracks.map(t => `
+        <div class="p-3 rounded-xl bg-zinc-900 border border-zinc-800 flex items-center justify-between gap-3">
+          <div class="flex items-center gap-2.5 min-w-0">
+            <span class="text-zinc-300 flex-shrink-0">${getTrackSvg(t.id, 'w-4 h-4')}</span>
+            <div class="min-w-0">
+              <div class="text-xs font-semibold text-zinc-100 flex items-center gap-1.5 truncate">
+                <span>${t.label}</span>
+                <span class="text-[10px] mono px-1.5 py-0.2 rounded bg-zinc-800 text-zinc-400">${t.id}</span>
+              </div>
+              <div class="text-[10px] text-zinc-400 flex gap-2 mt-0.5">
+                <span>${t.default_duration_min}m</span>
+                <span>·</span>
+                <span>${t.requires_code_watchdog ? 'Code Watchdog' : 'Conceptual'}</span>
+                <span>·</span>
+                <span>F>${t.friction_threshold}</span>
+              </div>
+            </div>
+          </div>
+          <button onclick="deleteCustomTrack('${t.id}')" title="Delete track"
+            class="text-zinc-500 hover:text-rose-400 p-1.5 rounded hover:bg-zinc-800 transition">
+            <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+          </button>
+        </div>
+      `).join('');
+    }
+
+    function openSettingsDrawer() {
+      document.getElementById('drawer-settings').classList.remove('hidden');
+      loadTracks();
+      // Load current settings
+      api('GET', '/api/settings').then(res => {
+        if (res) {
+          if (res.ntfy_topic) document.getElementById('set-ntfy-topic').value = res.ntfy_topic;
+          if (res.peripheral_boundary_meters) document.getElementById('set-boundary-meters').value = res.peripheral_boundary_meters;
+        }
+      }).catch(() => {});
+    }
+
+    function closeSettingsDrawer() {
+      document.getElementById('drawer-settings').classList.add('hidden');
+    }
+
+    async function saveCustomTrack() {
+      const idInput = document.getElementById('set-track-id');
+      const labelInput = document.getElementById('set-track-label');
+      const durInput = document.getElementById('set-track-duration');
+      const frictInput = document.getElementById('set-track-friction');
+      const watchSelect = document.getElementById('set-track-watchdog');
+      const promptInput = document.getElementById('set-track-prompt');
+
+      const id = idInput.value.trim().toLowerCase().replace(/\s+/g, '_');
+      const label = labelInput.value.trim();
+      const duration = parseInt(durInput.value) || 45;
+      const friction = parseInt(frictInput.value) || 65;
+      const watchdog = watchSelect.value === 'true';
+      const promptOverride = promptInput.value.trim();
+
+      if (!id || !label) {
+        toast('Please specify track identifier and label.', 'warning');
+        return;
+      }
+
+      const payload = {
+        id,
+        label,
+        default_duration_min: duration,
+        requires_code_watchdog: watchdog,
+        friction_threshold: friction,
+        verification_prompt_override: promptOverride || undefined
+      };
+
+      try {
+        await api('POST', '/api/settings/tracks', payload);
+        toast(`Track '${label}' saved successfully.`, 'success');
+        idInput.value = '';
+        labelInput.value = '';
+        promptInput.value = '';
+        await loadTracks();
+      } catch (err) {
+        toast('Failed to save track: ' + err.message, 'error');
+      }
+    }
+
+    async function deleteCustomTrack(trackId) {
+      if (!confirm(`Delete study track '${trackId}'?`)) return;
+      try {
+        await api('DELETE', `/api/settings/tracks/${trackId}`);
+        toast(`Track '${trackId}' deleted.`, 'info');
+        await loadTracks();
+      } catch (err) {
+        toast('Failed to delete track: ' + err.message, 'error');
+      }
+    }
+
+    async function saveEnvironmentalSettings() {
+      const meters = parseInt(document.getElementById('set-boundary-meters').value) || 3;
+      const ntfy = document.getElementById('set-ntfy-topic').value.trim();
+      try {
+        await api('POST', '/api/settings', {
+          peripheral_boundary_meters: meters,
+          ntfy_topic: ntfy || undefined
+        });
+        toast('Environmental boundaries & alerts saved.', 'success');
+      } catch (err) {
+        toast('Failed to save environment settings: ' + err.message, 'error');
+      }
+    }
+
+    // ---------------------------------------------------------------
+    // Embedded AI Support Drawer Logic
+    // ---------------------------------------------------------------
+    function toggleSupportDrawer() {
+      const el = document.getElementById('drawer-support-chat');
+      if (el) el.classList.toggle('hidden');
+    }
+
+    function sendQuickPrompt(promptText) {
+      const input = document.getElementById('support-input');
+      if (input) {
+        input.value = promptText;
+        handleSupportSend(new Event('submit'));
+      }
+    }
+
+    async function handleSupportSend(e) {
+      if (e && typeof e.preventDefault === 'function') e.preventDefault();
+      const input = document.getElementById('support-input');
+      const msg = input ? input.value.trim() : '';
+      if (!msg) return;
+      input.value = '';
+
+      const container = document.getElementById('support-chat-messages');
+      // Append user bubble
+      const userBubble = document.createElement('div');
+      userBubble.className = 'p-3 rounded-xl bg-zinc-800 text-zinc-100 self-end ml-8 border border-zinc-700 leading-relaxed';
+      userBubble.textContent = msg;
+      container.appendChild(userBubble);
+      container.scrollTop = container.scrollHeight;
+
+      // Append assistant placeholder
+      const botBubble = document.createElement('div');
+      botBubble.className = 'p-3 rounded-xl bg-zinc-900/90 text-zinc-300 mr-4 border border-zinc-800 mono leading-relaxed whitespace-pre-wrap';
+      botBubble.innerHTML = '<span class="spin inline-block mr-1">⟳</span> Consulting execution coach…';
+      container.appendChild(botBubble);
+      container.scrollTop = container.scrollHeight;
+
+      try {
+        const payload = {
+          message: msg,
+          session_id: activeSessionId || undefined
+        };
+        const res = await api('POST', '/api/support/chat', payload);
+        botBubble.textContent = res.reply || 'No response from assistant.';
+      } catch (err) {
+        botBubble.textContent = 'Error: ' + err.message;
+      } finally {
+        container.scrollTop = container.scrollHeight;
+      }
+    }
+
     // State
     // ---------------------------------------------------------------
     const API = '';  // same origin
@@ -669,7 +1093,7 @@
         const token = params.get('access_token');
         if (token) {
           localStorage.setItem('focus_auth_token', token);
-          toast('✅ Google authentication successful!', 'success');
+          toast('Google authentication successful!', 'success');
           window.history.replaceState(null, null, window.location.pathname);
         }
       }
@@ -706,7 +1130,7 @@
         document.getElementById('btn-logout')?.classList.remove('hidden');
         if (btn) btn.classList.add('hidden');
 
-        toast('🟢 dev-user (Local Bypass) authenticated', 'success');
+        toast('dev-user (Local Bypass) authenticated', 'success');
         await loadTasks();
         refreshDashboard();
       } catch (err) {
@@ -782,7 +1206,7 @@
       } finally {
         if (btn) {
           btn.disabled = false;
-          btn.innerHTML = '<span>⚡</span> Quick Sign In as Dev User (Local Bypass)';
+          btn.innerHTML = '<span class="flex items-center gap-2"><svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg><span>Quick Sign In as Dev User (Local Bypass)</span></span>';
         }
       }
     }
@@ -854,6 +1278,14 @@
     // Init
     // ---------------------------------------------------------------
     window.addEventListener('DOMContentLoaded', () => {
+      document.getElementById('f-category')?.addEventListener('change', (e) => {
+        const found = appTracks.find(t => t.id === e.target.value);
+        if (found && found.default_duration_min) {
+          const durEl = document.getElementById('f-duration');
+          if (durEl) durEl.value = found.default_duration_min;
+        }
+      });
+
       initSupabase();
       handleOAuthCallback();
 
@@ -881,6 +1313,7 @@
             checkAuthStatus();
             loadTasks();
             loadStats();
+            loadTracks();
           });
       } else {
         checkAuthStatus();
@@ -1028,12 +1461,12 @@
       const culpritBanner = document.getElementById('friction-culprit-banner');
       if (culprit && culprit.category && culprit.category !== 'none') {
         culpritBanner.className = 'mb-5 p-3.5 rounded-xl border border-rose-500/40 bg-rose-500/10 text-rose-200 text-xs flex items-center gap-3';
-        document.getElementById('culprit-icon').textContent = culprit.icon || '🚨';
+        document.getElementById('culprit-icon').innerHTML = '<svg class="w-5 h-5 text-rose-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>';
         document.getElementById('culprit-title').textContent = 'Primary Behavioral Bottleneck: ' + (culprit.label || culprit.category);
         document.getElementById('culprit-insight').textContent = culprit.insight || '';
       } else {
         culpritBanner.className = 'mb-5 p-3.5 rounded-xl border border-slate-700 bg-slate-800/40 text-slate-300 text-xs flex items-center gap-3';
-        document.getElementById('culprit-icon').textContent = '⚡';
+        document.getElementById('culprit-icon').innerHTML = '<svg class="w-5 h-5 text-amber-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>';
         document.getElementById('culprit-title').textContent = 'System Flow Normal';
         document.getElementById('culprit-insight').textContent = (culprit && culprit.insight) ? culprit.insight : 'No acute behavioral resistance detected in this window.';
       }
@@ -1054,7 +1487,7 @@
           <div class="p-4 rounded-xl bg-slate-800/50 border border-slate-700/60 hover:border-slate-600 transition">
             <div class="flex items-center justify-between mb-3">
               <div class="flex items-center gap-2">
-                <span class="text-xl">${cat.icon || '📋'}</span>
+                <span class="text-zinc-400">${getTrackSvg(cat.id || cat.category || '', 'w-4 h-4')}</span>
                 <span class="font-bold text-sm text-slate-200">${cat.label}</span>
               </div>
               <span class="text-xs px-2.5 py-0.5 rounded-full border mono font-bold ${fColor}">
@@ -1096,11 +1529,11 @@
     function renderTaskList(tasks) {
       const el = document.getElementById('task-list');
       if (!tasks.length) { el.innerHTML = '<p class="text-slate-500 text-sm italic">No tasks yet.</p>'; return; }
-      const catIcon = { coding: '💻', tnp: '📊', theory: '📖' };
+      // Dynamic category SVG icons used via getTrackSvg()
       const priBadge = { 1: 'text-rose-400 bg-rose-400/10 border border-rose-500/30', 2: 'text-amber-400 bg-amber-400/10 border border-amber-500/30', 3: 'text-zinc-300 bg-zinc-800 border border-zinc-700', 4: 'text-zinc-400 bg-zinc-900', 5: 'text-zinc-500 bg-zinc-900' };
       el.innerHTML = tasks.map(t => `
         <div class="flex items-center gap-2 px-3 py-2.5 rounded-xl bg-zinc-900/60 border border-zinc-800 hover:border-zinc-700 transition group">
-          <span class="text-base">${catIcon[t.category] || '📋'}</span>
+          <span class="text-zinc-400">${getTrackSvg(t.category, 'w-4 h-4')}</span>
           <div class="flex-1 min-w-0">
             <p class="text-sm font-medium text-zinc-200 truncate">${t.title}</p>
             <div class="flex gap-2 mt-0.5">
@@ -1130,7 +1563,7 @@
 
     function selectTask(taskId) {
       document.getElementById('qs-task').value = taskId;
-      toast('Task selected. Click ▶ Start or ⚡ 5-min.', 'info');
+      toast('Task selected. Click Start or 5-min.', 'info');
     }
 
     async function createTask(e) {
@@ -1268,7 +1701,7 @@
         const taskSelect = document.getElementById('qs-task');
         if (taskSelect) taskSelect.disabled = true;
         openMicroStartModal(taskId);
-        toast('⚡ Critical track resistance detected (>75). 5-min micro-start floor enforced.', 'warning');
+        toast('Critical track resistance detected (>75). 5-min micro-start floor enforced.', 'warning');
         return;
       }
 
@@ -1301,17 +1734,17 @@
 
         const lb = document.getElementById('latency-banner');
         if (isFiveMinInterventionActive) {
-          lb.textContent = `⚡ 5-Min Micro-Start Active: Step 1 – Write down 1 specific test case or heading. (Phone >3m)`;
+          lb.textContent = `[5-Min Micro-Start Active]: Step 1 – Write down 1 specific test case or heading. (Phone >3m)`;
           lb.classList.remove('hidden');
         } else if (res.start_latency_min > 0) {
-          lb.textContent = `⏱ Started ${res.start_latency_min} min late (latency recorded)`;
+          lb.textContent = `Started ${res.start_latency_min} min late (latency recorded)`;
           lb.classList.remove('hidden');
         } else {
           lb.classList.add('hidden');
         }
 
         startTimer();
-        toast(isFiveMinInterventionActive ? '⚡ 5-min micro-start started (Pomodoro cap 25m)!' : '▶ Session started!', 'success');
+        toast(isFiveMinInterventionActive ? '5-min micro-start started (Pomodoro cap 25m)!' : 'Session started!', 'success');
         document.getElementById('paste-warning').classList.add('hidden');
         resetDistCounts();
       } catch(e) {
@@ -1370,7 +1803,7 @@
 
         // If micro-start intervention completes within first 5m (<= 300s):
         if (isFiveMinInterventionActive && elapsed <= 300) {
-          toast('⚡ 5-Minute Micro-Start floor passed! Initiation resistance conquered.', 'success');
+          toast('5-Minute Micro-Start floor passed! Initiation resistance conquered.', 'success');
           // Suppress viva requirements during micro-start window
           resetHUD();
           loadStats();
@@ -1423,7 +1856,7 @@
       const isCoding = (activeTaskData?.category || '').toLowerCase() === 'coding';
       const isMetaWork = isCoding && /(neovim|nvim|vimrc|plugins?|themes?|dotfiles|config)/i.test(note);
       if (isMetaWork) {
-        toast('⚠️ Meta-work detected (Neovim/Plugins/Theme). Logged as Digital Drift rather than productive work.', 'warning');
+        toast('Meta-work detected (Neovim/Plugins/Theme). Logged as Digital Drift rather than productive work.', 'warning');
       }
 
       try {
@@ -1457,7 +1890,7 @@
         if (r && r.pasted_burst_detected && !pasteWarningShown) {
           pasteWarningShown = true;
           document.getElementById('paste-warning').classList.remove('hidden');
-          toast('⚠️ Paste burst flagged by VS Code watchdog!', 'warning');
+          toast('Paste burst flagged by VS Code watchdog!', 'warning');
         }
       } catch(e) { /* ignore */ }
     }
@@ -1538,11 +1971,11 @@
         const titleEl = document.getElementById('viva-verdict-title');
         const boxEl = document.getElementById('viva-verdict-box');
         if (passed) {
-          titleEl.textContent = '✅ PASS – Verified!';
+          titleEl.textContent = 'PASS – Verified!';
           titleEl.className = 'text-lg font-bold mb-3 text-green-400';
           boxEl.className = 'px-5 py-4 rounded-xl border text-sm leading-relaxed mb-4 mono whitespace-pre-wrap verdict-pass bg-green-500/5 text-green-200';
         } else {
-          titleEl.textContent = '❌ FAIL – Rejected!';
+          titleEl.textContent = 'FAIL – Rejected!';
           titleEl.className = 'text-lg font-bold mb-3 text-red-400';
           boxEl.className = 'px-5 py-4 rounded-xl border text-sm leading-relaxed mb-4 mono whitespace-pre-wrap verdict-fail bg-red-500/5 text-red-200';
         }
@@ -1551,7 +1984,7 @@
         document.getElementById('viva-step-3').classList.remove('hidden');
         loadStats();
         loadFrictionReport();
-        toast(passed ? '✅ Viva passed!' : '❌ Viva failed. Session rejected.', passed ? 'success' : 'error');
+        toast(passed ? 'Viva passed!' : 'Viva failed. Session rejected.', passed ? 'success' : 'error');
       } catch(e) {
         toast('Submit failed: ' + e.message, 'error');
       } finally {
