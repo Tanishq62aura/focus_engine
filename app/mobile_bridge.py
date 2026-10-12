@@ -90,3 +90,40 @@ def dispatch_session_end(task_title: str) -> bool:
             e,
         )
         return False
+
+
+def dispatch_peripheral_lockdown(track: str = "critical") -> bool:
+    """
+    Dispatches immediate high-priority alert via ntfy.sh for physical phone isolation.
+    Tags: warning,no_entry
+    Message: "CRITICAL TRACK DETECTED: Physical phone isolation required (>3m boundary)."
+    """
+    url = f"{NTFY_SERVER}/{NTFY_TOPIC}"
+    message = "CRITICAL TRACK DETECTED: Physical phone isolation required (>3m boundary)."
+    headers = {
+        "Title": f"Peripheral Lockdown ({track.upper()})",
+        "Tags": "warning,no_entry",
+        "Priority": "urgent",
+    }
+    try:
+        req = urllib.request.Request(
+            url,
+            data=message.encode("utf-8"),
+            headers=headers,
+            method="POST",
+        )
+        with urllib.request.urlopen(req, timeout=5) as response:
+            logger.info(
+                "🚨 Dispatched peripheral lockdown to %s (track: %r, status: %d)",
+                url,
+                track,
+                response.status,
+            )
+            return True
+    except Exception as e:
+        logger.warning(
+            "⚠️ Failed to dispatch peripheral lockdown to %s: %s",
+            url,
+            e,
+        )
+        return False

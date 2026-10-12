@@ -110,6 +110,7 @@ class SessionRead(BaseModel):
     verification_status: str
     pasted_burst_detected: bool
     notes: Optional[str]
+    target_duration_min: Optional[int] = None
 
     model_config = {"from_attributes": True}
 
@@ -137,6 +138,7 @@ class DistractionRead(BaseModel):
     session_id: str
     timestamp: datetime
     interruption_type: str
+    classification: Optional[str] = None
 
     model_config = {"from_attributes": True}
 

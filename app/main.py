@@ -240,13 +240,8 @@ def start_session(
     db: Session = Depends(get_db),
     current_user: str = Depends(get_current_user),
 ):
-    task = crud.get_task(db, data.task_id, user_id=current_user)
-    if not task:
-        raise HTTPException(status_code=404, detail="Task not found or unauthorized")
-    session = crud.start_session(db, data, user_id=current_user)
-    duration = task.estimated_duration_min or 25
-    background_tasks.add_task(mobile_bridge.dispatch_session_start, task.title, duration)
-    return session
+    from app.routers import sessions
+    return sessions.start_session(data, background_tasks, db, current_user)
 
 
 @app.post("/sessions/{session_id}/end", response_model=schemas.SessionRead)
@@ -433,7 +428,23 @@ def log_distraction(
     )
     if not session:
         raise HTTPException(status_code=404, detail="Active session not found or unauthorized")
-    return crud.log_distraction(db, data, user_id=current_user)
+
+    task = crud.get_task(db, session.task_id, user_id=current_user)
+    cat = (task.category or "").lower() if task else "coding"
+    classification = None
+
+    note_text = (data.note or "").lower()
+    if cat == "coding" and any(k in note_text for k in ("neovim", "nvim", "plugin", "theme", "config", "vimrc", "dotfile")):
+        classification = "Digital Drift (Meta-Work Warning)"
+        logger.warning("⚠️ Meta-work detected during coding session [%s]: %s", session.id, note_text)
+        meta_note = f"[Digital Drift: Meta-Work]: {data.note}"
+        session.notes = f"{session.notes} | {meta_note}" if session.notes else meta_note
+        db.commit()
+
+    log_entry = crud.log_distraction(db, data, user_id=current_user)
+    if classification:
+        log_entry.classification = classification
+    return log_entry
 
 
 # ---------------------------------------------------------------------------

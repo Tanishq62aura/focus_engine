@@ -493,8 +493,54 @@
           Done
         </button>
       </div>
-
     </div>
+  </div>
+
+  <!-- Micro-Start Gate Modal (Resistance Score > 75 / Critical Tracks) -->
+  <div id="modal-micro-start" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4" style="background:rgba(0,0,0,0.8);backdrop-filter:blur(8px)">
+    <div class="modal-enter glass rounded-2xl w-full max-w-lg p-6 space-y-4 border border-amber-500/30">
+      <div class="flex items-center justify-between pb-3 border-b border-slate-700/60">
+        <div class="flex items-center gap-2">
+          <span class="text-2xl">⚡</span>
+          <h3 class="text-lg font-bold text-amber-300">Micro-Start Initiation Gate</h3>
+        </div>
+        <button onclick="closeModal('modal-micro-start')" class="text-slate-400 hover:text-white text-lg">✕</button>
+      </div>
+
+      <div class="p-4 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-200 text-sm space-y-2">
+        <p class="font-semibold text-amber-300">🚨 High Friction Track Resistance Detected (>75 Score)</p>
+        <p class="text-xs text-slate-300">
+          This track exhibits high initiation drop-off. The default block duration has been capped to a <span class="font-bold text-white">25-minute Pomodoro</span>. Physical phone isolation is enforced (>3m boundary).
+        </p>
+      </div>
+
+      <div class="space-y-3 py-1">
+        <h4 class="text-xs uppercase tracking-wider text-slate-400 font-bold">5-Minute Atomic Setup Checklist:</h4>
+        <div class="space-y-2 text-sm text-slate-300">
+          <div class="flex items-start gap-2.5 p-2.5 rounded-lg bg-slate-800/60 border border-slate-700/50">
+            <span class="text-amber-400 font-bold">1.</span>
+            <span><strong class="text-white">Boundary Isolation:</strong> Place your mobile phone outside arm's reach (&gt;3 meters away).</span>
+          </div>
+          <div class="flex items-start gap-2.5 p-2.5 rounded-lg bg-slate-800/60 border border-slate-700/50">
+            <span class="text-amber-400 font-bold">2.</span>
+            <span><strong class="text-white">Atomic Goal:</strong> Step 1 – Write down exactly 1 specific test case or question heading.</span>
+          </div>
+          <div class="flex items-start gap-2.5 p-2.5 rounded-lg bg-slate-800/60 border border-slate-700/50">
+            <span class="text-amber-400 font-bold">3.</span>
+            <span><strong class="text-white">Dirty Start:</strong> Write draft code or notes immediately without setup perfectionism.</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="pt-2 flex items-center justify-between border-t border-slate-700/60">
+        <span class="text-xs text-slate-400">Viva proof requirements suppressed during initial 5m floor.</span>
+        <button onclick="confirmMicroStart()" class="px-5 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-900 font-bold text-sm shadow-lg transition active:scale-95">
+          Commence 5-Min Gate →
+        </button>
+      </div>
+    </div>
+  </div>
+
   <!-- Auth / Google Sign-In Modal -->
   <div id="modal-auth" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4" style="background:rgba(0,0,0,0.75);backdrop-filter:blur(6px)">
     <div class="modal-enter glass rounded-2xl w-full max-w-md p-6 space-y-4">
@@ -1135,42 +1181,88 @@
     window.submitTask = createTask;
 
     // ---------------------------------------------------------------
-    // Sessions
+    // Sessions & Micro-Start Gating
     // ---------------------------------------------------------------
+    let isFiveMinInterventionActive = false;
+    let microStartConfirmed = false;
+
+    function openMicroStartModal(taskId) {
+      document.getElementById('modal-micro-start').classList.remove('hidden');
+    }
+
+    function confirmMicroStart() {
+      closeModal('modal-micro-start');
+      microStartConfirmed = true;
+      startSession(true);
+    }
+    window.openMicroStartModal = openMicroStartModal;
+    window.confirmMicroStart = confirmMicroStart;
+
     async function startSession(isFiveMin = false) {
       if (activeSessionId) { toast('Session already active!', 'warning'); return; }
       const taskId = document.getElementById('qs-task').value;
       if (!taskId) { toast('Please select a task first.', 'warning'); return; }
 
+      const selectedTask = tasks.find(t => t.id === taskId);
+      const cat = (selectedTask?.category || '').toLowerCase();
+      const isCriticalTrack = ['tp_aptitude', 'tnp', 'theory'].includes(cat);
+
+      // Gate critical tracks / high resistance (>75 score)
+      if (isCriticalTrack && !microStartConfirmed && !isFiveMin) {
+        const taskSelect = document.getElementById('qs-task');
+        if (taskSelect) taskSelect.disabled = true;
+        openMicroStartModal(taskId);
+        toast('⚡ Critical track resistance detected (>75). 5-min micro-start floor enforced.', 'warning');
+        return;
+      }
+
       try {
         const res = await api('POST', '/sessions/start', {
           task_id: taskId,
-          is_five_min_intervention: isFiveMin,
+          is_five_min_intervention: isFiveMin || isCriticalTrack,
         });
         activeSessionId = res.id;
         activeTaskId = taskId;
-        activeTaskData = tasks.find(t => t.id === taskId);
+        activeTaskData = selectedTask;
         sessionStartTime = new Date();
         distCounts = { phone: 0, youtube: 0, overthinking: 0, other: 0 };
         pasteWarningShown = false;
+        microStartConfirmed = false;
+        isFiveMinInterventionActive = Boolean(res.is_five_min_intervention);
+
+        // Cap target duration if critical track or intervention
+        if (isFiveMinInterventionActive && activeTaskData) {
+          activeTaskData.target_goal = Math.min(25, activeTaskData.target_goal || 25);
+          activeTaskData.min_goal = 5;
+          activeTaskData.stretch_goal = Math.min(30, activeTaskData.stretch_goal || 30);
+        }
 
         // Update UI
         document.getElementById('hud-idle').classList.add('hidden');
         document.getElementById('hud-active').classList.remove('hidden');
         document.getElementById('session-task-name').textContent = activeTaskData?.title || 'Task';
         updateGoalBanner();
-        if (res.start_latency_min > 0) {
-          const lb = document.getElementById('latency-banner');
+
+        const lb = document.getElementById('latency-banner');
+        if (isFiveMinInterventionActive) {
+          lb.textContent = `⚡ 5-Min Micro-Start Active: Step 1 – Write down 1 specific test case or heading. (Phone >3m)`;
+          lb.classList.remove('hidden');
+        } else if (res.start_latency_min > 0) {
           lb.textContent = `⏱ Started ${res.start_latency_min} min late (latency recorded)`;
           lb.classList.remove('hidden');
+        } else {
+          lb.classList.add('hidden');
         }
 
         startTimer();
-        toast(isFiveMin ? '⚡ 5-min micro-session started!' : '▶ Session started!', 'success');
+        toast(isFiveMinInterventionActive ? '⚡ 5-min micro-start started (Pomodoro cap 25m)!' : '▶ Session started!', 'success');
         document.getElementById('paste-warning').classList.add('hidden');
         resetDistCounts();
       } catch(e) {
         toast('Failed to start: ' + e.message, 'error');
+      } finally {
+        const taskSelect = document.getElementById('qs-task');
+        if (taskSelect) taskSelect.disabled = false;
       }
     }
 
@@ -1216,8 +1308,19 @@
     async function endSession() {
       if (!activeSessionId) return;
       clearInterval(timerInterval);
+      const elapsed = Math.floor((new Date() - sessionStartTime) / 1000);
       try {
         await api('POST', `/sessions/${activeSessionId}/end`, { notes: '' });
+
+        // If micro-start intervention completes within first 5m (<= 300s):
+        if (isFiveMinInterventionActive && elapsed <= 300) {
+          toast('⚡ 5-Minute Micro-Start floor passed! Initiation resistance conquered.', 'success');
+          // Suppress viva requirements during micro-start window
+          resetHUD();
+          loadStats();
+          return;
+        }
+
         toast('Session ended. Opening viva modal…', 'success');
         currentVivaSessionId = activeSessionId;
         openVivaModal();
@@ -1231,6 +1334,8 @@
     function resetHUD() {
       activeSessionId = null;
       activeTaskId = null;
+      isFiveMinInterventionActive = false;
+      microStartConfirmed = false;
       document.getElementById('hud-idle').classList.remove('hidden');
       document.getElementById('hud-active').classList.add('hidden');
       document.getElementById('timer-display').textContent = '00:00:00';
@@ -1248,15 +1353,35 @@
     }
 
     // ---------------------------------------------------------------
-    // Distractions
+    // Distractions & Meta-Work Warning
     // ---------------------------------------------------------------
     async function logDistraction(type) {
       if (!activeSessionId) { toast('No active session.', 'warning'); return; }
+      let note = '';
+      if (type === 'other') {
+        const inputNote = prompt('Identify distraction or trigger (optional):', '');
+        if (inputNote) note = inputNote.trim();
+      }
+
+      // Meta-Work & Procrastination Warning
+      const isCoding = (activeTaskData?.category || '').toLowerCase() === 'coding';
+      const isMetaWork = isCoding && /(neovim|nvim|vimrc|plugins?|themes?|dotfiles|config)/i.test(note);
+      if (isMetaWork) {
+        toast('⚠️ Meta-work detected (Neovim/Plugins/Theme). Logged as Digital Drift rather than productive work.', 'warning');
+      }
+
       try {
-        await api('POST', '/distractions', { session_id: activeSessionId, interruption_type: type });
+        const payload = { session_id: activeSessionId, interruption_type: type };
+        if (note) payload.note = note;
+        const res = await api('POST', '/distractions', payload);
         distCounts[type]++;
         const el = document.querySelector(`.dist-count-${type}`);
         if (el) el.textContent = `×${distCounts[type]}`;
+
+        if (res.classification) {
+          toast(`Logged: ${res.classification}`, 'info');
+        }
+
         // Visual shake
         const btn = document.getElementById(`dist-${type}`);
         if (btn) { btn.classList.add('shake'); setTimeout(() => btn.classList.remove('shake'), 350); }
@@ -1386,7 +1511,7 @@
     }
 
     // Close on backdrop click
-    ['modal-excuse', 'modal-viva', 'modal-auth'].forEach(id => {
+    ['modal-excuse', 'modal-viva', 'modal-auth', 'modal-micro-start'].forEach(id => {
       const modal = document.getElementById(id);
       if (modal) {
         modal.addEventListener('click', (e) => {
