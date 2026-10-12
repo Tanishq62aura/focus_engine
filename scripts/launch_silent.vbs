@@ -19,8 +19,9 @@ End If
 
 WshShell.CurrentDirectory = "D:\new_p\focus_engine"
 
-' Run start_engine.bat through cmd.exe /c completely hidden (0)
-WshShell.Run "cmd.exe /c """ & batPath & """", 0, False
+Dim cmdStr
+cmdStr = "%comspec% /c """ & Chr(34) & batPath & Chr(34) & """"
+WshShell.Run cmdStr, 0, False
 
 Set WshShell = Nothing
 Set fso = Nothing

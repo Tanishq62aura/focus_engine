@@ -14,9 +14,12 @@ if not exist "logs" (
     mkdir "logs"
 )
 
-:: Ensure user Python scripts directory is available in PATH
+:: Ensure user Python scripts directory and Python314 are available in PATH
 if exist "%APPDATA%\Python\Python314\Scripts" (
     set "PATH=%APPDATA%\Python\Python314\Scripts;%PATH%"
+)
+if exist "C:\Python314" (
+    set "PATH=C:\Python314;%PATH%"
 )
 
 :: 4. Start cloudflared tunnel if not already running
