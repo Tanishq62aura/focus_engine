@@ -86,8 +86,26 @@ def dispatch_to_ntfy(tunnel_url: str, custom_topic: str | None = None) -> bool:
         return success
 
 
+import socket
+
+
+def get_local_ip() -> str:
+    """Extract active LAN IPv4 address for local network connectivity."""
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        s.connect(("8.8.8.8", 80))
+        return s.getsockname()[0]
+    except Exception:
+        try:
+            return socket.gethostbyname(socket.gethostname())
+        except Exception:
+            return "127.0.0.1"
+    finally:
+        s.close()
+
+
 def main():
-    parser = argparse.ArgumentParser(description="Get active Cloudflare Tunnel URL and dispatch alerts.")
+    parser = argparse.ArgumentParser(description="Get active Cloudflare Tunnel URL, LAN URL, and dispatch alerts.")
     parser.add_argument(
         "--wait",
         type=int,
@@ -105,23 +123,42 @@ def main():
         default=None,
         help="Optional ntfy topic override.",
     )
+    parser.add_argument(
+        "--url-only",
+        action="store_true",
+        help="Print only the raw Cloudflare tunnel URL.",
+    )
     args = parser.parse_args()
+
+    local_ip = get_local_ip()
+    local_url = f"http://{local_ip}:8000"
 
     deadline = time.time() + args.wait
     while time.time() <= deadline:
-        url = extract_from_log()
-        if url:
+        tunnel_url = extract_from_log()
+        if tunnel_url:
             if args.notify:
-                notified = dispatch_to_ntfy(url, custom_topic=args.topic)
+                notified = dispatch_to_ntfy(tunnel_url, custom_topic=args.topic)
                 if notified:
-                    print(f"🚀 Dispatched active tunnel URL alert to ntfy: {url}", file=sys.stderr)
-            print(url)
+                    print(f"🚀 Dispatched active tunnel URL alert to ntfy: {tunnel_url}", file=sys.stderr)
+
+            if args.url_only:
+                print(tunnel_url)
+            else:
+                print("=" * 60)
+                print("🚀 Focus Engine Endpoints")
+                print("-" * 60)
+                print(f"Cloudflare Tunnel: {tunnel_url}")
+                print(f"Local Network URL: {local_url}")
+                print("=" * 60)
             sys.exit(0)
         time.sleep(1)
 
     print("❌ No active trycloudflare.com tunnel URL found in logs/tunnel.log", file=sys.stderr)
+    print(f"Local Network URL: {local_url}")
     sys.exit(1)
 
 
 if __name__ == "__main__":
     main()
+

@@ -87,6 +87,8 @@ def end_session(
     return session
 
 
+from app.watchdogs.git_guard import verify_workspace_activity
+
 @router.post("/active/complete", response_model=schemas.SessionActiveCompleteResponse)
 def complete_active_session(
     data: schemas.SessionActiveComplete,
@@ -112,10 +114,17 @@ def complete_active_session(
     proof = data.code_snippet or data.proof_text or ""
     question = None
     if proof:
+        activity = verify_workspace_activity(since_timestamp=session.started_at)
+        if not activity.get("has_activity", False):
+            raise HTTPException(
+                status_code=400,
+                detail="No code or notes modified in the workspace during this session. Complete your work before viva defense.",
+            )
         question = generate_viva_question(
             proof_text=proof,
             category=category,
             pasted_burst_detected=session.pasted_burst_detected,
+            git_context=activity.get("summary"),
         )
         crud.set_viva_question(db, session.id, question, proof, user_id=current_user)
 
@@ -152,6 +161,20 @@ def paste_event(
     )
 
 
+@router.post("/{session_id}/complete", response_model=schemas.VivaResult)
+def complete_session(
+    session_id: str,
+    data: schemas.VivaRequest,
+    db: Session = Depends(get_db),
+    current_user: str = Depends(get_current_user),
+):
+    """
+    Submits proof of work and completes session, verifying local file/git activity
+    before unlocking AI viva defense.
+    """
+    return request_viva(session_id, data, db, current_user)
+
+
 @router.post("/{session_id}/request-viva", response_model=schemas.VivaResult)
 def request_viva(
     session_id: str,
@@ -166,6 +189,13 @@ def request_viva(
     if not session:
         raise HTTPException(status_code=404, detail="Session not found or unauthorized")
 
+    activity = verify_workspace_activity(since_timestamp=session.started_at)
+    if not activity.get("has_activity", False):
+        raise HTTPException(
+            status_code=400,
+            detail="No code or notes modified in the workspace during this session. Complete your work before viva defense.",
+        )
+
     task = crud.get_task(db, session.task_id, user_id=current_user)
     category = task.category if task else "coding"
 
@@ -173,6 +203,7 @@ def request_viva(
         proof_text=data.proof_text,
         category=category,
         pasted_burst_detected=session.pasted_burst_detected,
+        git_context=activity.get("summary"),
     )
     crud.set_viva_question(db, session_id, question, data.proof_text, user_id=current_user)
 

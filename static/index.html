@@ -445,6 +445,25 @@
         <p class="text-zinc-500 text-xs italic">Loading category analytics…</p>
       </div>
     </div>
+
+    <!-- Dashboard Status Footer -->
+    <footer class="mt-10 pt-4 pb-12 border-t border-zinc-800/80 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-zinc-500">
+      <div class="flex items-center gap-2">
+        <span class="w-2 h-2 rounded-full bg-zinc-600 inline-block"></span>
+        <span class="mono">Focus Engine v2.0</span>
+        <span class="text-zinc-700">|</span>
+        <span class="text-zinc-400">Behavioral Execution & Viva Defense</span>
+      </div>
+      <div class="flex items-center gap-2">
+        <span class="text-zinc-400">Connection Mode:</span>
+        <button onclick="openMobileConnectModal()" id="footer-connection-mode-badge"
+          class="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-zinc-900 border border-zinc-700 text-zinc-200 hover:border-zinc-500 transition text-[11px] mono cursor-pointer"
+          title="Click to view Mobile Connect URLs">
+          <span id="footer-connection-dot" class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+          <span id="footer-connection-text">Detecting...</span>
+        </button>
+      </div>
+    </footer>
   </section>
 
   <!-- ============================================================
@@ -672,6 +691,94 @@
     </div>
   </div>
 
+  <!-- Mobile Connect URLs Modal (Samsung F14 Local Wi-Fi & Cloudflare Tunnel) -->
+  <div id="modal-mobile-connect" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4" style="background:rgba(0,0,0,0.85);backdrop-filter:blur(8px)">
+    <div class="modal-enter glass rounded-2xl w-full max-w-lg p-6 space-y-4 border border-zinc-700 shadow-2xl">
+      <div class="flex items-center justify-between pb-3 border-b border-zinc-800">
+        <div class="flex items-center gap-2.5">
+          <div class="w-8 h-8 rounded-lg bg-zinc-900 border border-zinc-700 flex items-center justify-center text-zinc-100">
+            <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <rect x="5" y="2" width="14" height="20" rx="2" ry="2"/>
+              <line x1="12" y1="18" x2="12.01" y2="18"/>
+            </svg>
+          </div>
+          <div>
+            <h3 class="text-base font-bold text-zinc-100">Mobile Device Connect</h3>
+            <p class="text-xs text-zinc-400">Pair your Samsung F14 for zero-latency dashboard access</p>
+          </div>
+        </div>
+        <button onclick="closeModal('modal-mobile-connect')" class="text-zinc-400 hover:text-white p-1 rounded hover:bg-zinc-800">
+          <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+
+      <div class="space-y-3.5 pt-1">
+        <!-- Option 1: Zero-Latency Local Wi-Fi Direct -->
+        <div class="p-4 rounded-xl bg-zinc-900/80 border border-emerald-900/40 space-y-2.5">
+          <div class="flex items-center justify-between">
+            <span class="text-xs font-bold text-emerald-400 flex items-center gap-1.5">
+              <svg class="w-3.5 h-3.5 text-emerald-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12.55a11 11 0 0 1 14.08 0"/><path d="M1.42 9a16 16 0 0 1 21.16 0"/><path d="M8.53 16.11a6 6 0 0 1 6.95 0"/><line x1="12" y1="20" x2="12.01" y2="20"/></svg>
+              Local Wi-Fi Direct (Recommended for Samsung F14)
+            </span>
+            <span class="text-[10px] mono px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-300 border border-emerald-500/20">Zero Latency</span>
+          </div>
+          <p class="text-[11px] text-zinc-400 leading-relaxed">
+            Fastest connection when your phone and laptop share the same Wi-Fi. Bypasses DNS and proxy overhead.
+          </p>
+          <div class="flex gap-2 items-center">
+            <input id="mobile-lan-url" type="text" readonly
+              class="flex-1 bg-zinc-950 border border-zinc-700 rounded-lg px-3 py-2 text-xs text-zinc-200 mono select-all focus:outline-none" />
+            <button onclick="copyToClipboard('mobile-lan-url')"
+              class="px-3 py-2 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-200 border border-zinc-700 text-xs font-semibold flex items-center gap-1">
+              <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+              Copy
+            </button>
+            <a id="mobile-lan-link" href="#" target="_blank"
+              class="px-3 py-2 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-200 border border-zinc-700 text-xs font-semibold flex items-center gap-1">
+              <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+              Open
+            </a>
+          </div>
+        </div>
+
+        <!-- Option 2: Cloudflare Edge Tunnel -->
+        <div class="p-4 rounded-xl bg-zinc-900/80 border border-zinc-800 space-y-2.5">
+          <div class="flex items-center justify-between">
+            <span class="text-xs font-bold text-zinc-300 flex items-center gap-1.5">
+              <svg class="w-3.5 h-3.5 text-zinc-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+              Cloudflare Edge Tunnel (Remote Cellular)
+            </span>
+            <span class="text-[10px] mono px-2 py-0.5 rounded bg-zinc-800 text-zinc-400 border border-zinc-700">HTTPS Edge</span>
+          </div>
+          <p class="text-[11px] text-zinc-400 leading-relaxed">
+            Accessible anywhere on 4G/5G mobile networks when away from home Wi-Fi.
+          </p>
+          <div class="flex gap-2 items-center">
+            <input id="mobile-tunnel-url" type="text" readonly
+              class="flex-1 bg-zinc-950 border border-zinc-700 rounded-lg px-3 py-2 text-xs text-zinc-200 mono select-all focus:outline-none" />
+            <button onclick="copyToClipboard('mobile-tunnel-url')"
+              class="px-3 py-2 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-200 border border-zinc-700 text-xs font-semibold flex items-center gap-1">
+              <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+              Copy
+            </button>
+            <a id="mobile-tunnel-link" href="#" target="_blank"
+              class="px-3 py-2 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-200 border border-zinc-700 text-xs font-semibold flex items-center gap-1">
+              <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+              Open
+            </a>
+          </div>
+        </div>
+      </div>
+
+      <div class="pt-3 border-t border-zinc-800 flex justify-end">
+        <button onclick="closeModal('modal-mobile-connect')"
+          class="px-4 py-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-xs font-semibold rounded-lg transition">
+          Close
+        </button>
+      </div>
+    </div>
+  </div>
+
   <!-- ============================================================
        SETTINGS DRAWER (Dynamic Study Tracks & Environment)
   ============================================================ -->
@@ -776,6 +883,25 @@
                 Save Environment Settings
               </button>
             </div>
+          </div>
+
+          <!-- Section 3: Mobile Network Direct Connect -->
+          <div class="p-4 rounded-xl bg-zinc-900/60 border border-zinc-800 space-y-3">
+            <div class="flex items-center justify-between">
+              <h3 class="text-xs font-bold uppercase tracking-wider text-zinc-300">Mobile Wi-Fi Direct Connect</h3>
+              <span id="settings-network-mode" class="text-[10px] mono px-2 py-0.5 rounded bg-zinc-800 text-zinc-300 border border-zinc-700">Detecting...</span>
+            </div>
+            <p class="text-xs text-zinc-400 leading-relaxed">
+              Connect your Samsung F14 over zero-latency local Wi-Fi or remote Cloudflare Edge tunnel.
+            </p>
+            <button type="button" onclick="openMobileConnectModal()" id="btn-open-mobile-connect"
+              class="w-full bg-zinc-800 hover:bg-zinc-700 text-zinc-100 border border-zinc-700 font-semibold rounded-lg py-2.5 text-xs transition active:scale-95 flex items-center justify-center gap-2">
+              <svg class="w-4 h-4 text-zinc-200" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <rect x="5" y="2" width="14" height="20" rx="2" ry="2"/>
+                <line x1="12" y1="18" x2="12.01" y2="18"/>
+              </svg>
+              Show Mobile Connect URLs
+            </button>
           </div>
         </div>
       </div>
@@ -1483,6 +1609,9 @@
         loadStats();
       }
 
+      // Initialize network connection mode
+      detectConnectionMode();
+
       // Poll for paste flags every 5s when a session is active
       setInterval(pollPasteFlag, 5000);
     });
@@ -2155,6 +2284,80 @@
     }
 
     // ---------------------------------------------------------------
+    // Mobile Connect & Network Mode Handlers
+    // ---------------------------------------------------------------
+    async function detectConnectionMode() {
+      const host = window.location.hostname || '';
+      const isLan = host === 'localhost' || host === '127.0.0.1' ||
+        host.startsWith('192.168.') || host.startsWith('10.') || host.startsWith('172.');
+      const isCloudflare = host.includes('trycloudflare.com') || host.includes('cloudflare');
+
+      const modeText = document.getElementById('footer-connection-text');
+      const modeDot = document.getElementById('footer-connection-dot');
+      const settingsMode = document.getElementById('settings-network-mode');
+
+      if (isLan) {
+        if (modeText) modeText.textContent = 'LAN Direct';
+        if (modeDot) modeDot.className = 'w-1.5 h-1.5 rounded-full bg-emerald-400';
+        if (settingsMode) {
+          settingsMode.textContent = 'LAN Direct';
+          settingsMode.className = 'text-[10px] mono px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-300 border border-emerald-500/20';
+        }
+      } else if (isCloudflare) {
+        if (modeText) modeText.textContent = 'Cloudflare Edge';
+        if (modeDot) modeDot.className = 'w-1.5 h-1.5 rounded-full bg-cyan-400';
+        if (settingsMode) {
+          settingsMode.textContent = 'Cloudflare Edge';
+          settingsMode.className = 'text-[10px] mono px-2 py-0.5 rounded bg-cyan-500/10 text-cyan-300 border border-cyan-500/20';
+        }
+      } else {
+        if (modeText) modeText.textContent = host || 'Connected';
+        if (modeDot) modeDot.className = 'w-1.5 h-1.5 rounded-full bg-zinc-400';
+      }
+    }
+
+    async function openMobileConnectModal() {
+      const modal = document.getElementById('modal-mobile-connect');
+      if (modal) modal.classList.remove('hidden');
+
+      try {
+        const res = await api('GET', '/api/network/endpoints');
+        const lanUrl = res.lan_url || `http://${window.location.hostname}:8000`;
+        const tunnelUrl = res.tunnel_url || 'https://paid-soccer-differential-glenn.trycloudflare.com';
+
+        const lanInput = document.getElementById('mobile-lan-url');
+        const lanLink = document.getElementById('mobile-lan-link');
+        if (lanInput) lanInput.value = lanUrl;
+        if (lanLink) lanLink.href = lanUrl;
+
+        const tunInput = document.getElementById('mobile-tunnel-url');
+        const tunLink = document.getElementById('mobile-tunnel-link');
+        if (tunInput) tunInput.value = tunnelUrl;
+        if (tunLink) tunLink.href = tunnelUrl;
+      } catch (e) {
+        console.warn('Failed loading network endpoints:', e);
+      }
+    }
+
+    function copyToClipboard(elementId) {
+      const el = document.getElementById(elementId);
+      if (!el) return;
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(el.value).then(() => {
+          toast('URL copied to clipboard!', 'success');
+        }).catch(() => {
+          el.select();
+          document.execCommand('copy');
+          toast('URL copied to clipboard!', 'success');
+        });
+      } else {
+        el.select();
+        document.execCommand('copy');
+        toast('URL copied to clipboard!', 'success');
+      }
+    }
+
+    // ---------------------------------------------------------------
     // Modal utils
     // ---------------------------------------------------------------
     function closeModal(id) {
@@ -2162,7 +2365,7 @@
     }
 
     // Close on backdrop click
-    ['modal-excuse', 'modal-viva', 'modal-auth', 'modal-micro-start'].forEach(id => {
+    ['modal-excuse', 'modal-viva', 'modal-auth', 'modal-micro-start', 'modal-mobile-connect'].forEach(id => {
       const modal = document.getElementById(id);
       if (modal) {
         modal.addEventListener('click', (e) => {
@@ -2171,6 +2374,7 @@
       }
     });
   </script>
+
 
 </body>
 </html>

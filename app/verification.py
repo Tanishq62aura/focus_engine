@@ -42,7 +42,8 @@ Rules:
 3. For aptitude scorecard → pick the weakest topic by accuracy and ask a question testing true understanding (not formula recall).
 4. If pasted_burst_detected is True, preface your question with:
    "⚠️ PASTE ALERT: A large code block was pasted during this session. Justify every line."
-5. Return ONLY the question — no preamble, no bullet points.
+5. If Git & Workspace Diff Telemetry is provided, tailor your technical question directly to the modified files, functions, lines, and logic.
+6. Return ONLY the question — no preamble, no bullet points.
 """
 
 _VIVA_EVAL_SYSTEM = """You are a brutally honest technical evaluator.
@@ -65,19 +66,22 @@ def generate_viva_question(
     proof_text: str,
     category: str,
     pasted_burst_detected: bool = False,
+    git_context: Optional[str] = None,
 ) -> str:
     """
-    Generate a single tough viva question based on the submitted proof.
+    Generate a single tough viva question based on the submitted proof and git telemetry.
     Returns a question string.
     """
     if _client is None:
         return _fallback_viva_question(category, pasted_burst_detected)
 
     paste_flag = "YES" if pasted_burst_detected else "NO"
+    git_section = f"\nGit & Workspace Diff Telemetry:\n{git_context}\n" if git_context else ""
     user_content = (
         f"Category: {category}\n"
-        f"Pasted burst detected: {paste_flag}\n\n"
-        f"--- PROOF START ---\n{proof_text}\n--- PROOF END ---\n\n"
+        f"Pasted burst detected: {paste_flag}\n"
+        f"{git_section}"
+        f"\n--- PROOF START ---\n{proof_text}\n--- PROOF END ---\n\n"
         "Generate the viva question now."
     )
 

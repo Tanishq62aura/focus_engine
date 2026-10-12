@@ -6,7 +6,9 @@ Supabase PostgreSQL & SQLite support, JWT auth injection, and PWA static assets.
 from __future__ import annotations
 
 import logging
+import os
 import re
+import socket
 from pathlib import Path
 from typing import Optional
 
@@ -30,6 +32,37 @@ from app.auth import (
 )
 from app.database import Base, engine, get_db, init_db
 from app.verification import audit_excuse_with_ai, evaluate_viva_answer, generate_viva_question
+from app.watchdogs.git_guard import verify_workspace_activity
+
+
+def get_local_ip() -> str:
+    """Extract the active LAN IPv4 address for local Wi-Fi connectivity."""
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        s.connect(("8.8.8.8", 80))
+        return s.getsockname()[0]
+    except Exception:
+        try:
+            return socket.gethostbyname(socket.gethostname())
+        except Exception:
+            return "127.0.0.1"
+    finally:
+        s.close()
+
+
+def get_cloudflare_tunnel_url() -> Optional[str]:
+    """Extract the most recent active *.trycloudflare.com URL from logs/tunnel.log."""
+    log_file = Path(__file__).resolve().parent.parent / "logs" / "tunnel.log"
+    if not log_file.exists():
+        return None
+    try:
+        with open(log_file, "r", encoding="utf-8", errors="ignore") as f:
+            matches = re.findall(r"https://[a-zA-Z0-9-]+\.trycloudflare\.com", f.read())
+            if matches:
+                return matches[-1]
+    except Exception:
+        pass
+    return None
 
 # ---------------------------------------------------------------------------
 # YouTube Audit – inline schema
@@ -78,6 +111,19 @@ app = FastAPI(
     description="Behavioral execution & accountability system with Supabase & Google OAuth",
     version="2.0.0",
 )
+
+
+@app.on_event("startup")
+def startup_banner():
+    local_ip = get_local_ip()
+    tunnel_url = get_cloudflare_tunnel_url() or "Initializing..."
+    logger.info("=" * 60)
+    logger.info("🚀 Focus Engine Online")
+    logger.info("🌐 Cloudflare Tunnel: %s", tunnel_url)
+    logger.info("⚡ Local LAN Direct:   http://%s:8000", local_ip)
+    logger.info("💻 Localhost:          http://127.0.0.1:8000")
+    logger.info("=" * 60)
+
 
 # Mount static directory for frontend HUD & PWA assets
 _STATIC_DIR = Path(__file__).parent.parent / "static"
@@ -299,10 +345,17 @@ def complete_active_session(
     proof = data.code_snippet or data.proof_text or ""
     question = None
     if proof:
+        activity = verify_workspace_activity(since_timestamp=session.started_at)
+        if not activity.get("has_activity", False):
+            raise HTTPException(
+                status_code=400,
+                detail="No code or notes modified in the workspace during this session. Complete your work before viva defense.",
+            )
         question = generate_viva_question(
             proof_text=proof,
             category=category,
             pasted_burst_detected=session.pasted_burst_detected,
+            git_context=activity.get("summary"),
         )
         crud.set_viva_question(db, session.id, question, proof, user_id=current_user)
 
@@ -463,6 +516,17 @@ def log_distraction(
 # ---------------------------------------------------------------------------
 # Viva – multi-step AI verification
 # ---------------------------------------------------------------------------
+@app.post("/sessions/{session_id}/complete", response_model=schemas.VivaResult)
+def complete_session(
+    session_id: str,
+    data: schemas.VivaRequest,
+    db: Session = Depends(get_db),
+    current_user: str = Depends(get_current_user),
+):
+    """Submits proof of work and completes session after verifying local git/file activity."""
+    return request_viva(session_id, data, db, current_user)
+
+
 @app.post("/sessions/{session_id}/request-viva", response_model=schemas.VivaResult)
 def request_viva(
     session_id: str,
@@ -483,6 +547,13 @@ def request_viva(
             detail=f"Session verification status is already '{session.verification_status}'",
         )
 
+    activity = verify_workspace_activity(since_timestamp=session.started_at)
+    if not activity.get("has_activity", False):
+        raise HTTPException(
+            status_code=400,
+            detail="No code or notes modified in the workspace during this session. Complete your work before viva defense.",
+        )
+
     task = crud.get_task(db, session.task_id, user_id=current_user)
     category = task.category if task else "coding"
 
@@ -490,6 +561,7 @@ def request_viva(
         proof_text=data.proof_text,
         category=category,
         pasted_burst_detected=session.pasted_burst_detected,
+        git_context=activity.get("summary"),
     )
     crud.set_viva_question(db, session_id, question, data.proof_text, user_id=current_user)
     return schemas.VivaResult(
@@ -588,4 +660,24 @@ def excuse_clusters_report(
 
     engine = ExcuseClusterEngine(db, user_id=current_user, days=days)
     return engine.run_analysis()
+
+
+# ---------------------------------------------------------------------------
+# Network Endpoints (LAN Direct & Cloudflare Edge)
+# ---------------------------------------------------------------------------
+@app.get("/api/network/endpoints")
+def network_endpoints():
+    """
+    Exposes active local LAN IP and Cloudflare Tunnel endpoints
+    for zero-latency mobile Wi-Fi connect and remote edge sync.
+    """
+    local_ip = get_local_ip()
+    tunnel_url = get_cloudflare_tunnel_url()
+    return {
+        "local_ip": local_ip,
+        "lan_url": f"http://{local_ip}:8000",
+        "tunnel_url": tunnel_url,
+        "port": 8000,
+    }
+
 
