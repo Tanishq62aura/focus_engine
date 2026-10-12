@@ -163,7 +163,7 @@
         <h2 class="text-base font-bold text-slate-200 mb-4 flex items-center gap-2">
           <span class="text-blue-400">＋</span> New Task
         </h2>
-        <form id="task-form" onsubmit="submitTask(event)" class="space-y-3">
+        <form id="task-form" onsubmit="createTask(event)" class="space-y-3">
           <input id="f-title" type="text" placeholder="Task title *" required
             class="w-full bg-slate-800/60 border border-slate-600 rounded-lg px-3 py-2.5 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-blue-500 transition" />
 
@@ -209,7 +209,7 @@
             </div>
           </div>
 
-          <button type="submit" id="btn-create-task"
+          <button type="submit" id="btn-create-task" onclick="createTask(event)"
             class="w-full bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 text-white rounded-lg py-2.5 text-sm font-semibold transition-all duration-200 active:scale-95">
             Create Task
           </button>
@@ -515,6 +515,11 @@
           Continue with Google
         </button>
 
+        <button id="btn-dev-login" onclick="loginWithDevToken()"
+          class="w-full bg-slate-800/90 hover:bg-slate-700/90 text-slate-200 border border-slate-600 rounded-xl py-2.5 text-xs font-semibold flex items-center justify-center gap-2 transition active:scale-95 shadow">
+          <span>⚡</span> Quick Sign In as Dev User (Local Bypass)
+        </button>
+
         <div class="relative flex py-2 items-center">
           <div class="flex-grow border-t border-slate-700"></div>
           <span class="flex-shrink mx-2 text-[10px] text-slate-500 uppercase tracking-wider">or custom token / credentials</span>
@@ -614,36 +619,71 @@
       }
     }
 
+    let currentAuthStatus = { authenticated: false, auth_disabled: false, user_id: null };
+
     async function checkAuthStatus() {
+      const userLabel = document.getElementById('auth-user-label');
+      const statusDot = document.getElementById('auth-status-dot');
+      const btnLogin = document.getElementById('btn-login-google');
+      const btnLogout = document.getElementById('btn-logout');
+
       try {
         const status = await api('GET', '/auth/status');
-        const userLabel = document.getElementById('auth-user-label');
-        const statusDot = document.getElementById('auth-status-dot');
-        const btnLogin = document.getElementById('btn-login-google');
-        const btnLogout = document.getElementById('btn-logout');
+        currentAuthStatus = status;
+        window.currentAuthStatus = status;
 
         if (status.auth_disabled) {
-          statusDot.className = 'w-2 h-2 rounded-full bg-emerald-400';
-          userLabel.textContent = `Dev Mode (${status.user_id})`;
-          btnLogin.classList.add('hidden');
-          btnLogout.classList.add('hidden');
+          if (statusDot) statusDot.className = 'w-2 h-2 rounded-full bg-emerald-400';
+          if (userLabel) userLabel.textContent = `Dev Mode (${status.user_id || 'dev-user'})`;
+          if (btnLogin) btnLogin.classList.add('hidden');
+          if (btnLogout) btnLogout.classList.add('hidden');
+        } else if (status.authenticated && status.user_id) {
+          if (statusDot) statusDot.className = 'w-2 h-2 rounded-full bg-emerald-400';
+          const uid = status.user_id;
+          if (userLabel) userLabel.textContent = uid.length > 16 ? uid.substring(0, 14) + '…' : uid;
+          if (btnLogin) btnLogin.classList.add('hidden');
+          if (btnLogout) btnLogout.classList.remove('hidden');
         } else {
-          statusDot.className = 'w-2 h-2 rounded-full bg-emerald-400';
-          const uid = status.user_id || 'User';
-          userLabel.textContent = uid.length > 16 ? uid.substring(0, 14) + '…' : uid;
-          btnLogin.classList.add('hidden');
-          btnLogout.classList.remove('hidden');
+          if (statusDot) statusDot.className = 'w-2 h-2 rounded-full bg-amber-400';
+          if (userLabel) userLabel.textContent = 'Sign-in required';
+          if (btnLogin) btnLogin.classList.remove('hidden');
+          if (btnLogout) btnLogout.classList.add('hidden');
         }
       } catch(e) {
-        const userLabel = document.getElementById('auth-user-label');
-        const statusDot = document.getElementById('auth-status-dot');
-        const btnLogin = document.getElementById('btn-login-google');
-        const btnLogout = document.getElementById('btn-logout');
+        currentAuthStatus = { authenticated: false, auth_disabled: false, user_id: null };
+        window.currentAuthStatus = currentAuthStatus;
+        if (statusDot) statusDot.className = 'w-2 h-2 rounded-full bg-amber-400';
+        if (userLabel) userLabel.textContent = 'Sign-in required';
+        if (btnLogin) btnLogin.classList.remove('hidden');
+        if (btnLogout) btnLogout.classList.add('hidden');
+      }
+    }
 
-        statusDot.className = 'w-2 h-2 rounded-full bg-amber-400';
-        userLabel.textContent = 'Sign-in required';
-        btnLogin.classList.remove('hidden');
-        btnLogout.classList.add('hidden');
+    async function loginWithDevToken() {
+      const btn = document.getElementById('btn-dev-login');
+      if (btn) {
+        btn.disabled = true;
+        btn.textContent = 'Connecting…';
+      }
+      try {
+        const res = await fetch('/auth/dev-token', { method: 'POST' });
+        if (!res.ok) throw new Error('Failed to obtain dev token from backend');
+        const data = await res.json();
+        if (data.access_token) {
+          localStorage.setItem('focus_auth_token', data.access_token);
+          toast('Signed in as Dev User (Local).', 'success');
+          closeModal('modal-auth');
+          await checkAuthStatus();
+          await loadTasks();
+          await loadStats();
+        }
+      } catch (e) {
+        toast('Dev sign-in error: ' + e.message, 'error');
+      } finally {
+        if (btn) {
+          btn.disabled = false;
+          btn.innerHTML = '<span>⚡</span> Quick Sign In as Dev User (Local Bypass)';
+        }
       }
     }
 
@@ -715,9 +755,38 @@
     window.addEventListener('DOMContentLoaded', () => {
       initSupabase();
       handleOAuthCallback();
-      checkAuthStatus();
-      loadTasks();
-      loadStats();
+
+      // Bind task form & button explicitly
+      const btnCreate = document.getElementById('btn-create-task');
+      if (btnCreate) {
+        btnCreate.addEventListener('click', (e) => createTask(e));
+      }
+      const formTask = document.getElementById('task-form');
+      if (formTask) {
+        formTask.addEventListener('submit', (e) => createTask(e));
+      }
+
+      // Check auth status and load initial state
+      if (!localStorage.getItem('focus_auth_token')) {
+        fetch('/auth/dev-token', { method: 'POST' })
+          .then(r => r.ok ? r.json() : null)
+          .then(d => {
+            if (d && d.access_token) {
+              localStorage.setItem('focus_auth_token', d.access_token);
+            }
+          })
+          .catch(() => {})
+          .finally(() => {
+            checkAuthStatus();
+            loadTasks();
+            loadStats();
+          });
+      } else {
+        checkAuthStatus();
+        loadTasks();
+        loadStats();
+      }
+
       // Poll for paste flags every 5s when a session is active
       setInterval(pollPasteFlag, 5000);
     });
@@ -747,30 +816,58 @@
     // API helpers
     // ---------------------------------------------------------------
     async function api(method, path, body) {
+      const headers = { 'Content-Type': 'application/json' };
+      const token = localStorage.getItem('focus_auth_token');
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+      }
+      const opts = { method, headers };
+      if (body) opts.body = JSON.stringify(body);
+
+      let res;
       try {
-        const headers = { 'Content-Type': 'application/json' };
-        const token = localStorage.getItem('focus_auth_token');
-        if (token) {
-          headers['Authorization'] = `Bearer ${token}`;
-        }
-        const opts = { method, headers };
-        if (body) opts.body = JSON.stringify(body);
-        const res = await fetch(API + path, opts);
-        if (!res.ok) {
-          if (res.status === 401) {
-            document.getElementById('auth-status-dot').className = 'w-2 h-2 rounded-full bg-amber-400';
-            document.getElementById('auth-user-label').textContent = 'Sign-in required';
-            document.getElementById('btn-login-google').classList.remove('hidden');
-            document.getElementById('btn-logout').classList.add('hidden');
+        res = await fetch(API + path, opts);
+      } catch (netErr) {
+        throw new Error(`Network error connecting to ${path}: ${netErr.message}`);
+      }
+
+      if (!res.ok) {
+        let errorDetail = res.statusText;
+        try {
+          const errJson = await res.json();
+          if (errJson) {
+            if (typeof errJson.detail === 'string') {
+              errorDetail = errJson.detail;
+            } else if (Array.isArray(errJson.detail)) {
+              errorDetail = errJson.detail.map(d => `${d.loc ? d.loc.slice(-1) + ': ' : ''}${d.msg}`).join('; ');
+            } else if (errJson.message) {
+              errorDetail = errJson.message;
+            }
+          }
+        } catch (_) {}
+
+        if (res.status === 401) {
+          const dot = document.getElementById('auth-status-dot');
+          if (dot) dot.className = 'w-2 h-2 rounded-full bg-amber-400';
+          const label = document.getElementById('auth-user-label');
+          if (label) label.textContent = 'Sign-in required';
+          document.getElementById('btn-login-google')?.classList.remove('hidden');
+          document.getElementById('btn-logout')?.classList.add('hidden');
+          if (path !== '/auth/status') {
             openAuthModal();
           }
-          const err = await res.json().catch(() => ({ detail: res.statusText }));
-          throw new Error(err.detail || res.statusText);
+          throw new Error(errorDetail || 'Authentication required: please sign in.');
         }
-        return await res.json();
-      } catch (e) {
-        throw e;
+        if (res.status === 422) {
+          throw new Error(`Validation error: ${errorDetail}`);
+        }
+        if (res.status >= 500) {
+          throw new Error(`Server error (${res.status}): ${errorDetail}`);
+        }
+        throw new Error(errorDetail || `HTTP error ${res.status}`);
       }
+
+      return await res.json();
     }
 
     // ---------------------------------------------------------------
@@ -934,32 +1031,108 @@
       toast('Task selected. Click ▶ Start or ⚡ 5-min.', 'info');
     }
 
-    async function submitTask(e) {
-      e.preventDefault();
+    async function createTask(e) {
+      if (e) {
+        if (typeof e.preventDefault === 'function') e.preventDefault();
+        if (typeof e.stopPropagation === 'function') e.stopPropagation();
+      }
       const btn = document.getElementById('btn-create-task');
-      btn.disabled = true; btn.textContent = 'Creating…';
+      if (btn) {
+        btn.disabled = true;
+        btn.textContent = 'Creating…';
+      }
+
       try {
-        await api('POST', '/tasks', {
-          title: document.getElementById('f-title').value.trim(),
-          category: document.getElementById('f-category').value,
-          priority: parseInt(document.getElementById('f-priority').value),
-          estimated_duration_min: parseInt(document.getElementById('f-duration').value),
-          min_goal: parseInt(document.getElementById('f-min').value),
-          target_goal: parseInt(document.getElementById('f-target').value),
-          stretch_goal: parseInt(document.getElementById('f-stretch').value),
-        });
-        toast('Task created!', 'success');
-        document.getElementById('task-form').reset();
-        document.getElementById('f-min').value = 25;
-        document.getElementById('f-target').value = 50;
-        document.getElementById('f-stretch').value = 90;
-        loadTasks();
-      } catch(e) {
-        toast('Error: ' + e.message, 'error');
+        const titleEl = document.getElementById('f-title');
+        const title = titleEl ? titleEl.value.trim() : '';
+        if (!title) {
+          toast('Task title is required.', 'warning');
+          if (titleEl) titleEl.focus();
+          return;
+        }
+
+        const catEl = document.getElementById('f-category');
+        const priEl = document.getElementById('f-priority');
+        const durEl = document.getElementById('f-duration');
+        const minEl = document.getElementById('f-min');
+        const tgtEl = document.getElementById('f-target');
+        const strEl = document.getElementById('f-stretch');
+
+        const category = catEl ? catEl.value : 'coding';
+        const priority = priEl ? (parseInt(priEl.value, 10) || 3) : 3;
+        const estimated_duration_min = durEl ? (parseInt(durEl.value, 10) || 60) : 60;
+        const min_goal = minEl ? (parseInt(minEl.value, 10) || 25) : 25;
+        const target_goal = tgtEl ? (parseInt(tgtEl.value, 10) || 50) : 50;
+        const stretch_goal = strEl ? (parseInt(strEl.value, 10) || 90) : 90;
+
+        if (stretch_goal < target_goal) {
+          toast('Stretch goal must be >= Target goal.', 'warning');
+          return;
+        }
+        if (target_goal < min_goal) {
+          toast('Target goal must be >= Min goal.', 'warning');
+          return;
+        }
+
+        // Ensure token is attached; if missing, attempt dev token fallback
+        let token = localStorage.getItem('focus_auth_token');
+        if (!token) {
+          try {
+            const devRes = await fetch('/auth/dev-token', { method: 'POST' });
+            if (devRes.ok) {
+              const devData = await devRes.json();
+              if (devData.access_token) {
+                token = devData.access_token;
+                localStorage.setItem('focus_auth_token', token);
+                await checkAuthStatus();
+              }
+            }
+          } catch (_) {}
+        }
+
+        const authStatus = window.currentAuthStatus || {};
+        if (!token && authStatus.auth_disabled === false) {
+          toast('Sign-in required to create tasks.', 'warning');
+          openAuthModal();
+          return;
+        }
+
+        const payload = {
+          title,
+          category,
+          priority,
+          estimated_duration_min,
+          min_goal,
+          target_goal,
+          stretch_goal,
+        };
+
+        const res = await api('POST', '/tasks', payload);
+        toast('Task created successfully', 'success');
+
+        const form = document.getElementById('task-form');
+        if (form) form.reset();
+        if (durEl) durEl.value = 60;
+        if (minEl) minEl.value = 25;
+        if (tgtEl) tgtEl.value = 50;
+        if (strEl) strEl.value = 90;
+
+        await loadTasks();
+        if (res && res.id) {
+          selectTask(res.id);
+        }
+      } catch (err) {
+        console.error('[CreateTask Error]', err);
+        toast(err.message || 'Failed to create task.', 'error');
       } finally {
-        btn.disabled = false; btn.textContent = 'Create Task';
+        if (btn) {
+          btn.disabled = false;
+          btn.textContent = 'Create Task';
+        }
       }
     }
+    window.createTask = createTask;
+    window.submitTask = createTask;
 
     // ---------------------------------------------------------------
     // Sessions

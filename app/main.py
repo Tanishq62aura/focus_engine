@@ -17,7 +17,16 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app import crud, mobile_bridge, models, schemas
-from app.auth import AUTH_DISABLED, get_current_user
+from app.auth import (
+    AUTH_DISABLED,
+    DEV_USER_ID,
+    SUPABASE_JWT_SECRET,
+    HTTPAuthorizationCredentials,
+    bearer_scheme,
+    decode_token,
+    get_current_user,
+    jwt,
+)
 from app.database import Base, engine, get_db, init_db
 from app.verification import audit_excuse_with_ai, evaluate_viva_answer, generate_viva_question
 
@@ -87,14 +96,48 @@ async def serve_frontend():
 
 
 # ---------------------------------------------------------------------------
-# Auth status endpoint
+# Auth status & Dev token endpoints
 # ---------------------------------------------------------------------------
 @app.get("/auth/status")
-def auth_status(current_user: str = Depends(get_current_user)):
-    return {
-        "auth_disabled": AUTH_DISABLED,
-        "user_id": current_user,
-    }
+def auth_status(credentials: Optional[HTTPAuthorizationCredentials] = Depends(bearer_scheme)):
+    if AUTH_DISABLED:
+        return {
+            "authenticated": True,
+            "auth_disabled": True,
+            "user_id": DEV_USER_ID,
+        }
+    if not credentials or not credentials.credentials:
+        return {
+            "authenticated": False,
+            "auth_disabled": False,
+            "user_id": None,
+        }
+    try:
+        payload = decode_token(credentials.credentials)
+        uid = payload.get("sub") or payload.get("user_id") or payload.get("email") or DEV_USER_ID
+        return {
+            "authenticated": True,
+            "auth_disabled": False,
+            "user_id": str(uid),
+        }
+    except Exception:
+        return {
+            "authenticated": False,
+            "auth_disabled": False,
+            "user_id": None,
+        }
+
+
+@app.post("/auth/dev-token")
+def issue_dev_token():
+    """Generates an authentic HS256 development JWT for local testing and dev mode."""
+    secret = SUPABASE_JWT_SECRET or "supabase-jwt-secret-njxlltvrcmqinrnhlpgh"
+    dev_user = DEV_USER_ID or "dev-user"
+    if not jwt:
+        raise HTTPException(status_code=500, detail="JWT library unavailable on server")
+    token = jwt.encode({"sub": dev_user, "role": "authenticated", "aud": "authenticated"}, secret, algorithm="HS256")
+    return {"access_token": token, "token_type": "bearer", "user_id": dev_user}
+
 
 
 # ---------------------------------------------------------------------------
