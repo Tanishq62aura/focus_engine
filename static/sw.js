@@ -2,7 +2,7 @@
  * sw.js - Service Worker for Focus Engine Flight Recorder
  * Caches app shell assets and CDN dependencies for offline resilience.
  */
-const CACHE_NAME = 'focus-engine-v2.0';
+const CACHE_NAME = 'focus-engine-v2.1';
 const APP_SHELL = [
   '/',
   '/static/manifest.json',
@@ -40,7 +40,7 @@ self.addEventListener('activate', (event) => {
   );
 });
 
-// Fetch: Network-first for API endpoints, Cache-first for static shell
+// Fetch: Bypass API endpoints, Network-first for HTML navigation, Cache-first for static assets
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
 
@@ -54,6 +54,22 @@ self.addEventListener('fetch', (event) => {
     url.pathname.startsWith('/reports') ||
     url.pathname.startsWith('/auth')
   ) {
+    return;
+  }
+
+  // Network-first for navigation requests (prevents stale HTML shell)
+  if (event.request.mode === 'navigate' || url.pathname === '/') {
+    event.respondWith(
+      fetch(event.request)
+        .then((networkResponse) => {
+          if (networkResponse && networkResponse.status === 200) {
+            const clone = networkResponse.clone();
+            caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
+          }
+          return networkResponse;
+        })
+        .catch(() => caches.match('/'))
+    );
     return;
   }
 
