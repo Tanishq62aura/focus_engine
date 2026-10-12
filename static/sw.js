@@ -2,7 +2,7 @@
  * sw.js - Service Worker for Focus Engine Flight Recorder
  * Caches app shell assets and CDN dependencies for offline resilience.
  */
-const CACHE_NAME = 'focus-engine-v2.3';
+const CACHE_NAME = 'focus-engine-v3.0-monochrome';
 const APP_SHELL = [
   '/',
   '/static/manifest.json',
