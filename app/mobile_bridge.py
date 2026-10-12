@@ -5,6 +5,7 @@ Integrates with Samsung Modes & Routines / tasker webhooks for DND and grayscale
 """
 from __future__ import annotations
 
+import json
 import logging
 import os
 import urllib.error
@@ -127,3 +128,45 @@ def dispatch_peripheral_lockdown(track: str = "critical") -> bool:
             e,
         )
         return False
+
+
+def dispatch_tunnel_online(tunnel_url: str, topic: str | None = None) -> bool:
+    """
+    Sends an HTTP POST to ntfy.sh with the fresh Cloudflare Tunnel URL.
+    Title: "🚀 Focus Engine Online"
+    Body: "Active URL: <url>"
+    Header/JSON Click: <url> so clicking on phone notification opens the live app immediately.
+    """
+    target_topics = []
+    if topic:
+        target_topics.append(topic.strip())
+    else:
+        if NTFY_TOPIC:
+            target_topics.append(NTFY_TOPIC)
+        if "focus_engine_ntfy" not in target_topics:
+            target_topics.append("focus_engine_ntfy")
+
+    success = False
+    for t in target_topics:
+        payload = {
+            "topic": t,
+            "title": "🚀 Focus Engine Online",
+            "message": f"Active URL: {tunnel_url}",
+            "click": tunnel_url,
+            "tags": ["rocket", "link"],
+            "priority": 4,
+        }
+        try:
+            req = urllib.request.Request(
+                f"{NTFY_SERVER}",
+                data=json.dumps(payload).encode("utf-8"),
+                headers={"Content-Type": "application/json"},
+                method="POST",
+            )
+            with urllib.request.urlopen(req, timeout=8) as response:
+                logger.info("🚀 Dispatched tunnel online alert to %s/%s -> %s (status %d)", NTFY_SERVER, t, tunnel_url, response.status)
+                success = True
+        except Exception as e:
+            logger.warning("⚠️ Failed to dispatch tunnel online alert to %s: %s", t, e)
+
+    return success

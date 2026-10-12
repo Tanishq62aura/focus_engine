@@ -33,7 +33,9 @@ if !ERRORLEVEL! NEQ 0 (
             start "" /B cmd /c "cloudflared tunnel --url http://127.0.0.1:8000 >> logs\tunnel.log 2>&1"
         )
     )
-)
+
+:: Auto-dispatch fresh Cloudflare Tunnel URL to ntfy with clickable link
+start "" /B python scripts\get_tunnel_url.py --notify --wait 15
 
 :: 5. Run uvicorn server on 0.0.0.0 (LAN access) redirecting stdout & stderr to logs/backend.log
 where uvicorn >nul 2>&1
