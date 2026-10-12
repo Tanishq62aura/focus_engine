@@ -223,6 +223,50 @@ def end_session(
     return session
 
 
+@app.post("/sessions/active/complete", response_model=schemas.SessionActiveCompleteResponse)
+def complete_active_session(
+    data: schemas.SessionActiveComplete,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+    current_user: str = Depends(get_current_user),
+):
+    active = crud.get_active_session(db, user_id=current_user)
+    if not active:
+        raise HTTPException(status_code=404, detail="No active session found to complete")
+
+    session = crud.end_session(db, active.id, schemas.SessionEnd(notes=data.notes), user_id=current_user)
+    if data.duration_minutes:
+        session.actual_focused_seconds = data.duration_minutes * 60
+        db.commit()
+        db.refresh(session)
+
+    task = crud.get_task(db, session.task_id, user_id=current_user)
+    task_title = task.title if task else "Focus Session"
+    category = task.category if task else "coding"
+    background_tasks.add_task(mobile_bridge.dispatch_session_end, task_title)
+
+    proof = data.code_snippet or data.proof_text or ""
+    question = None
+    if proof:
+        question = generate_viva_question(
+            proof_text=proof,
+            category=category,
+            pasted_burst_detected=session.pasted_burst_detected,
+        )
+        crud.set_viva_question(db, session.id, question, proof, user_id=current_user)
+
+    return schemas.SessionActiveCompleteResponse(
+        session_id=session.id,
+        task_id=session.task_id,
+        status="completed",
+        verification_status=session.verification_status,
+        viva_question=question,
+        actual_focused_seconds=session.actual_focused_seconds,
+        pasted_burst_detected=session.pasted_burst_detected,
+    )
+
+
+
 # ---------------------------------------------------------------------------
 # Paste Event (VS Code Watchdog)
 # ---------------------------------------------------------------------------
@@ -421,7 +465,26 @@ def submit_viva(
         verification_status=updated.verification_status if updated else "unverified",
         viva_question=updated.viva_question if updated else None,
         viva_feedback=updated.viva_feedback if updated else None,
+        verified=(updated.verification_status == "verified") if updated else False,
     )
+
+
+@app.post("/sessions/active/submit-viva", response_model=schemas.VivaResult)
+def submit_active_viva(
+    data: schemas.VivaSubmit,
+    db: Session = Depends(get_db),
+    current_user: str = Depends(get_current_user),
+):
+    session = (
+        db.query(models.FocusSession)
+        .filter(models.FocusSession.user_id == current_user)
+        .order_by(models.FocusSession.started_at.desc())
+        .first()
+    )
+    if not session:
+        raise HTTPException(status_code=404, detail="No session found")
+    return submit_viva(session.id, data, db, current_user)
+
 
 
 # ---------------------------------------------------------------------------

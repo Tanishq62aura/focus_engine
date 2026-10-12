@@ -7,7 +7,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import List, Literal, Optional
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 
 # ---------------------------------------------------------------------------
@@ -120,6 +120,15 @@ class SessionRead(BaseModel):
 class DistractionCreate(BaseModel):
     session_id: str
     interruption_type: Literal["phone", "youtube", "overthinking", "other"] = "other"
+    note: Optional[str] = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def map_distraction_type(cls, data):
+        if isinstance(data, dict):
+            if "type" in data and "interruption_type" not in data:
+                data["interruption_type"] = data["type"]
+        return data
 
 
 class DistractionRead(BaseModel):
@@ -182,8 +191,26 @@ class VivaSubmit(BaseModel):
 class VivaResult(BaseModel):
     session_id: str
     verification_status: str
-    viva_question: Optional[str]
-    viva_feedback: Optional[str]
+    viva_question: Optional[str] = None
+    viva_feedback: Optional[str] = None
+    verified: bool = False
+
+
+class SessionActiveComplete(BaseModel):
+    code_snippet: Optional[str] = None
+    proof_text: Optional[str] = None
+    notes: Optional[str] = None
+    duration_minutes: Optional[int] = None
+
+
+class SessionActiveCompleteResponse(BaseModel):
+    session_id: str
+    task_id: str
+    status: str = "completed"
+    verification_status: str = "pending_viva"
+    viva_question: Optional[str] = None
+    actual_focused_seconds: int = 0
+    pasted_burst_detected: bool = False
 
 
 # ---------------------------------------------------------------------------
