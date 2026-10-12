@@ -116,6 +116,14 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000
 ```
 *(Access via `http://<YOUR_COMPUTER_LOCAL_IP>:8000` from your phone).*
 
+### Headless Windows Background Daemon (with Cloudflare Tunnel)
+To run the Focus Engine and Cloudflare Tunnel silently in the background without keeping open terminal windows:
+
+- **Launch silently**: Run or double-click `scripts/launch_silent.vbs`. Both the Uvicorn backend (`0.0.0.0:8000`) and `cloudflared.exe` tunnel launch completely hidden. Logs are written to `logs/backend.log` and `logs/tunnel.log`.
+- **Get Active Public URL**: Run `python scripts/get_tunnel_url.py` (or `.\scripts\get_tunnel_url.ps1`) to print the active `*.trycloudflare.com` tunnel URL.
+- **Stop services**: Run `scripts/stop_engine.bat` to safely find and terminate both the Uvicorn backend PID and `cloudflared.exe`.
+- **Install autostart on Windows login**: Run `scripts/install_autostart.bat` to create a shortcut in your Windows Startup directory (`shell:startup`) pointing to `scripts/launch_silent.vbs`.
+
 ---
 
 ## 5. Running Automated Tests

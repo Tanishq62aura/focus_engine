@@ -124,6 +124,9 @@ desktop.ini
 # 10. TEMPORARY FILES & LOGS
 # ------------------------------------------------------------------------------
 *.log
+logs/
 scratch/
 tmp/
 temp/
+cloudflared.exe
+*.exe
