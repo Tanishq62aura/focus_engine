@@ -443,9 +443,9 @@ def get_weekly_friction_report(
     )
 
     categories_config = {
-        "coding": {"label": "Coding", "icon": "💻"},
-        "tnp": {"label": "T&P Aptitude", "icon": "📊"},
-        "theory": {"label": "Theory", "icon": "📖"},
+        "coding": {"label": "Coding", "icon": "coding"},
+        "tnp": {"label": "T&P Aptitude", "icon": "tnp"},
+        "theory": {"label": "Theory", "icon": "theory"},
     }
 
     cat_data = {

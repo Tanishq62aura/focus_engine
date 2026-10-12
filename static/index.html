@@ -563,64 +563,112 @@
     </div>
   </div>
 
-  <!-- Auth / Google Sign-In Modal -->
+  <!-- Auth / Supabase Account Modal (Tabbed) -->
   <div id="modal-auth" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4" style="background:rgba(0,0,0,0.85);backdrop-filter:blur(8px)">
     <div class="modal-enter glass rounded-2xl w-full max-w-md p-6 space-y-4 border border-zinc-700">
       <div class="flex items-center justify-between">
-        <h3 class="text-lg font-bold grad-text flex items-center gap-2">
-          <svg class="w-4 h-4 text-zinc-100" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg> Supabase & Google Auth
+        <h3 class="text-base font-bold text-zinc-100 flex items-center gap-2">
+          <svg class="w-4 h-4 text-zinc-100" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+          Account & Supabase Sync
         </h3>
         <button onclick="closeModal('modal-auth')" class="text-zinc-400 hover:text-white p-1 rounded hover:bg-zinc-800"><svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
       </div>
-      <p class="text-xs text-zinc-400 leading-relaxed">
-        Sign in to isolate and synchronize your focus sessions, excuses, and viva verifications with hosted Supabase PostgreSQL.
-      </p>
 
-      <div class="space-y-3 pt-1">
-        <button id="btn-oauth-google" onclick="signInWithGoogle()"
-          class="w-full bg-zinc-100 hover:bg-white text-zinc-950 font-bold rounded-xl py-3 text-sm flex items-center justify-center gap-2 transition shadow active:scale-95">
-          <svg class="w-4 h-4" viewBox="0 0 24 24"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"/></svg>
-          Continue with Google
+      <!-- Tab Switcher -->
+      <div class="flex border-b border-zinc-800 text-xs">
+        <button type="button" id="tab-auth-login" onclick="switchAuthTab('login')"
+          class="flex-1 py-2 font-bold text-zinc-100 border-b-2 border-zinc-100 transition text-center">
+          Sign In
         </button>
+        <button type="button" id="tab-auth-signup" onclick="switchAuthTab('signup')"
+          class="flex-1 py-2 font-bold text-zinc-400 border-b-2 border-transparent hover:text-zinc-200 transition text-center">
+          Create Account
+        </button>
+      </div>
 
-        <button id="btn-dev-login" onclick="loginWithDevToken()"
-          class="w-full bg-zinc-800 hover:bg-zinc-700 text-zinc-200 border border-zinc-700 rounded-xl py-2.5 text-xs font-semibold flex items-center justify-center gap-2 transition active:scale-95 shadow">
-          <span class="flex items-center gap-2"><svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg><span>Quick Sign In as Dev User (Local Bypass)</span></span>
-        </button>
+      <!-- Tab 1: Sign In Panel -->
+      <div id="panel-auth-login" class="space-y-3 pt-1">
+        <form onsubmit="submitNativeLogin(event)" class="space-y-2.5">
+          <div>
+            <label class="text-[11px] text-zinc-400 block mb-1">Email Address</label>
+            <input id="login-email" type="email" placeholder="name@domain.com" required
+              class="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-xs text-zinc-100 placeholder-zinc-600 focus:outline-none focus:border-zinc-400 mono" />
+          </div>
+          <div>
+            <label class="text-[11px] text-zinc-400 block mb-1">Password</label>
+            <input id="login-password" type="password" placeholder="••••••••" required
+              class="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-xs text-zinc-100 placeholder-zinc-600 focus:outline-none focus:border-zinc-400" />
+          </div>
+          <button type="submit" id="btn-submit-login"
+            class="w-full bg-zinc-100 hover:bg-white text-zinc-950 font-bold rounded-lg py-2.5 text-xs transition active:scale-95 shadow-sm">
+            Sign In
+          </button>
+        </form>
 
         <div class="relative flex py-2 items-center">
           <div class="flex-grow border-t border-zinc-800"></div>
-          <span class="flex-shrink mx-2 text-[10px] text-zinc-500 uppercase tracking-wider">or custom token / credentials</span>
+          <span class="flex-shrink mx-2 text-[10px] text-zinc-500 uppercase tracking-wider">or fast access</span>
           <div class="flex-grow border-t border-zinc-800"></div>
         </div>
 
-        <div class="space-y-2.5 text-xs">
-          <div>
-            <label class="text-zinc-400 block mb-1">Supabase Project URL</label>
-            <input id="auth-sb-url" type="url" placeholder="https://xyzcompany.supabase.co"
-              class="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-zinc-200 placeholder-zinc-600 focus:outline-none focus:border-zinc-400 focus:ring-1 focus:ring-zinc-400 mono" />
-          </div>
-          <div>
-            <label class="text-zinc-400 block mb-1">Supabase Anon Key</label>
-            <input id="auth-sb-anon" type="text" placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
-              class="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-zinc-200 placeholder-zinc-600 focus:outline-none focus:border-zinc-400 focus:ring-1 focus:ring-zinc-400 mono" />
-          </div>
-          <div>
-            <label class="text-zinc-400 block mb-1">Manual JWT Bearer Token</label>
-            <textarea id="auth-manual-token" rows="2" placeholder="Paste custom Supabase / Google Bearer token here..."
-              class="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-zinc-200 placeholder-zinc-600 focus:outline-none focus:border-zinc-400 focus:ring-1 focus:ring-zinc-400 mono text-xs"></textarea>
-          </div>
-        </div>
-
-        <div class="flex gap-2 pt-2">
-          <button onclick="saveAuthSettings()" class="flex-1 bg-zinc-100 hover:bg-white text-zinc-950 font-bold rounded-lg py-2.5 text-xs transition active:scale-95 shadow-sm">
-            Save & Connect
+        <div class="grid grid-cols-2 gap-2">
+          <button id="btn-oauth-google" onclick="signInWithGoogle()"
+            class="bg-zinc-900 hover:bg-zinc-850 text-zinc-200 border border-zinc-700 font-semibold rounded-lg py-2 text-xs flex items-center justify-center gap-1.5 transition active:scale-95">
+            <svg class="w-3.5 h-3.5" viewBox="0 0 24 24"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"/></svg>
+            Google
           </button>
-          <button onclick="clearAuthToken()" class="px-3 py-2.5 rounded-lg text-zinc-400 hover:bg-zinc-800 text-xs transition">
-            Clear Token
+          <button id="btn-dev-login" onclick="loginWithDevToken()"
+            class="bg-zinc-800 hover:bg-zinc-700 text-zinc-200 border border-zinc-700 rounded-lg py-2 text-xs font-semibold flex items-center justify-center gap-1.5 transition active:scale-95">
+            <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+            Dev Bypass
           </button>
         </div>
       </div>
+
+      <!-- Tab 2: Create Account Panel -->
+      <div id="panel-auth-signup" class="hidden space-y-3 pt-1">
+        <form onsubmit="submitNativeSignup(event)" class="space-y-2.5">
+          <div>
+            <label class="text-[11px] text-zinc-400 block mb-1">Email Address</label>
+            <input id="signup-email" type="email" placeholder="name@domain.com" required
+              class="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-xs text-zinc-100 placeholder-zinc-600 focus:outline-none focus:border-zinc-400 mono" />
+          </div>
+          <div>
+            <label class="text-[11px] text-zinc-400 block mb-1">Password (min 8 characters)</label>
+            <input id="signup-password" type="password" minlength="8" placeholder="••••••••" required
+              class="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-xs text-zinc-100 placeholder-zinc-600 focus:outline-none focus:border-zinc-400" />
+          </div>
+          <div>
+            <label class="text-[11px] text-zinc-400 block mb-1">Confirm Password</label>
+            <input id="signup-confirm-password" type="password" minlength="8" placeholder="••••••••" required
+              class="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-xs text-zinc-100 placeholder-zinc-600 focus:outline-none focus:border-zinc-400" />
+          </div>
+          <button type="submit" id="btn-submit-signup"
+            class="w-full bg-zinc-100 hover:bg-white text-zinc-950 font-bold rounded-lg py-2.5 text-xs transition active:scale-95 shadow-sm">
+            Create Account
+          </button>
+        </form>
+        <p class="text-[11px] text-zinc-500 leading-relaxed text-center">
+          Clean-slate registration. All telemetry, tasks, and viva records will be strictly scoped to your private account.
+        </p>
+      </div>
+
+      <!-- Advanced connection details -->
+      <details class="text-[11px] text-zinc-400 pt-2 border-t border-zinc-800">
+        <summary class="cursor-pointer hover:text-zinc-200">Custom Supabase Connection</summary>
+        <div class="space-y-2 pt-2">
+          <input id="auth-sb-url" type="url" placeholder="https://xyz.supabase.co"
+            class="w-full bg-zinc-900 border border-zinc-700 rounded px-2.5 py-1.5 text-xs text-zinc-200 mono" />
+          <input id="auth-sb-anon" type="text" placeholder="eyJhbGciOiJIUzI1Ni..."
+            class="w-full bg-zinc-900 border border-zinc-700 rounded px-2.5 py-1.5 text-xs text-zinc-200 mono" />
+          <textarea id="auth-manual-token" rows="2" placeholder="Custom JWT token..."
+            class="w-full bg-zinc-900 border border-zinc-700 rounded px-2.5 py-1.5 text-xs text-zinc-200 mono"></textarea>
+          <div class="flex gap-2">
+            <button onclick="saveAuthSettings()" class="flex-1 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 rounded py-1.5 text-xs">Save</button>
+            <button onclick="clearAuthToken()" class="px-3 bg-zinc-900 hover:bg-zinc-800 text-zinc-400 rounded py-1.5 text-xs">Clear Token</button>
+          </div>
+        </div>
+      </details>
     </div>
   </div>
 
@@ -1072,6 +1120,109 @@
     const DEFAULT_SB_ANON = '';
 
     // ---------------------------------------------------------------
+
+    // ---------------------------------------------------------------
+    // Native Tabbed Authentication & Account Scoping
+    // ---------------------------------------------------------------
+    function switchAuthTab(tab) {
+      const tabLogin = document.getElementById('tab-auth-login');
+      const tabSignup = document.getElementById('tab-auth-signup');
+      const panelLogin = document.getElementById('panel-auth-login');
+      const panelSignup = document.getElementById('panel-auth-signup');
+
+      if (!tabLogin || !tabSignup || !panelLogin || !panelSignup) return;
+
+      if (tab === 'signup') {
+        tabSignup.className = 'flex-1 py-2 font-bold text-zinc-100 border-b-2 border-zinc-100 transition text-center';
+        tabLogin.className = 'flex-1 py-2 font-bold text-zinc-400 border-b-2 border-transparent hover:text-zinc-200 transition text-center';
+        panelSignup.classList.remove('hidden');
+        panelLogin.classList.add('hidden');
+      } else {
+        tabLogin.className = 'flex-1 py-2 font-bold text-zinc-100 border-b-2 border-zinc-100 transition text-center';
+        tabSignup.className = 'flex-1 py-2 font-bold text-zinc-400 border-b-2 border-transparent hover:text-zinc-200 transition text-center';
+        panelLogin.classList.remove('hidden');
+        panelSignup.classList.add('hidden');
+      }
+    }
+
+    async function submitNativeSignup(e) {
+      if (e && typeof e.preventDefault === 'function') e.preventDefault();
+      const emailEl = document.getElementById('signup-email');
+      const passEl = document.getElementById('signup-password');
+      const confirmEl = document.getElementById('signup-confirm-password');
+      const btn = document.getElementById('btn-submit-signup');
+
+      const email = emailEl ? emailEl.value.trim().toLowerCase() : '';
+      const password = passEl ? passEl.value : '';
+      const confirmPass = confirmEl ? confirmEl.value : '';
+
+      if (!email || !password) {
+        toast('Please enter email and password.', 'warning');
+        return;
+      }
+      if (password.length < 8) {
+        toast('Password must be at least 8 characters long.', 'warning');
+        return;
+      }
+      if (password !== confirmPass) {
+        toast('Passwords do not match. Please verify.', 'error');
+        return;
+      }
+
+      if (btn) { btn.disabled = true; btn.textContent = 'Creating account…'; }
+      try {
+        const res = await api('POST', '/api/auth/signup', { email, password });
+        if (res && res.access_token) {
+          localStorage.setItem('focus_auth_token', res.access_token);
+          localStorage.setItem('focus_user_id', res.user_id);
+          localStorage.setItem('focus_user_email', res.email);
+          closeModal('modal-auth');
+          toast(`Account registered! Clean-slate workspace initialized for ${res.email}`, 'success');
+          await checkAuthStatus();
+          await loadTasks();
+          refreshDashboard();
+        }
+      } catch (err) {
+        toast('Registration error: ' + err.message, 'error');
+      } finally {
+        if (btn) { btn.disabled = false; btn.textContent = 'Create Account'; }
+      }
+    }
+
+    async function submitNativeLogin(e) {
+      if (e && typeof e.preventDefault === 'function') e.preventDefault();
+      const emailEl = document.getElementById('login-email');
+      const passEl = document.getElementById('login-password');
+      const btn = document.getElementById('btn-submit-login');
+
+      const email = emailEl ? emailEl.value.trim().toLowerCase() : '';
+      const password = passEl ? passEl.value : '';
+
+      if (!email || !password) {
+        toast('Please enter email and password.', 'warning');
+        return;
+      }
+
+      if (btn) { btn.disabled = true; btn.textContent = 'Signing in…'; }
+      try {
+        const res = await api('POST', '/api/auth/login', { email, password });
+        if (res && res.access_token) {
+          localStorage.setItem('focus_auth_token', res.access_token);
+          localStorage.setItem('focus_user_id', res.user_id);
+          localStorage.setItem('focus_user_email', res.email);
+          closeModal('modal-auth');
+          toast(`Signed in as ${res.email}`, 'success');
+          await checkAuthStatus();
+          await loadTasks();
+          refreshDashboard();
+        }
+      } catch (err) {
+        toast('Sign in failed: ' + err.message, 'error');
+      } finally {
+        if (btn) { btn.disabled = false; btn.textContent = 'Sign In'; }
+      }
+    }
+
     // Supabase & OAuth Helper Functions
     // ---------------------------------------------------------------
     function initSupabase() {
@@ -1161,7 +1312,16 @@
         } else if (status.authenticated && status.user_id) {
           if (statusDot) statusDot.className = 'w-2 h-2 rounded-full bg-emerald-400';
           const uid = status.user_id;
-          if (userLabel) userLabel.textContent = uid === 'dev-user' ? 'dev-user (Local Bypass)' : (uid.length > 16 ? uid.substring(0, 14) + '…' : uid);
+          const email = status.email || localStorage.getItem('focus_user_email');
+          if (userLabel) {
+            if (email && email !== 'dev-user@local') {
+              userLabel.textContent = email;
+            } else if (uid === 'dev-user') {
+              userLabel.textContent = 'dev-user (Local Bypass)';
+            } else {
+              userLabel.textContent = uid.length > 16 ? uid.substring(0, 14) + '…' : uid;
+            }
+          }
           if (btnLogin) btnLogin.classList.add('hidden');
           if (btnLogout) btnLogout.classList.remove('hidden');
           if (btnQuickDev) btnQuickDev.classList.add('hidden');
@@ -1268,10 +1428,12 @@
     function logout() {
       localStorage.removeItem('focus_auth_token');
       localStorage.removeItem('focus_user_id');
-      toast('Signed out.', 'info');
+      localStorage.removeItem('focus_user_email');
+      toast('Signed out successfully.', 'info');
       checkAuthStatus();
       loadTasks();
       refreshDashboard();
+      if (typeof resetHUD === 'function') resetHUD();
     }
 
     // ---------------------------------------------------------------

@@ -17,7 +17,7 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app import crud, mobile_bridge, models, schemas
-from app.routers import settings, support
+from app.routers import auth, settings, support
 from app.auth import (
     AUTH_DISABLED,
     DEV_USER_ID,
@@ -85,6 +85,7 @@ if _STATIC_DIR.exists():
     app.mount("/static", StaticFiles(directory=str(_STATIC_DIR)), name="static")
 
 # Mount API routers
+app.include_router(auth.router, prefix="/api/auth", tags=["auth"])
 app.include_router(settings.router, prefix="/api/settings", tags=["settings"])
 app.include_router(support.router, prefix="/api/support", tags=["support"])
 
