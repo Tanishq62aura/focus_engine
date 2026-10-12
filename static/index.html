@@ -2,10 +2,10 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <title>Focus Engine – Behavioral Execution HUD</title>
   <meta name="description" content="A personal accountability system that tracks focus sessions, audits excuses, and verifies work through AI-powered viva examinations." />
-  <meta name="theme-color" content="#0f172a" />
+  <meta name="theme-color" content="#09090b" />
   <link rel="manifest" href="/static/manifest.json" />
   <link rel="icon" type="image/svg+xml" href="/static/icons/icon.svg" />
   <link rel="apple-touch-icon" href="/static/icons/icon-192.png" />
@@ -15,45 +15,50 @@
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet" />
   <style>
     :root {
-      --bg-primary: #0f172a;
-      --bg-secondary: #1e293b;
-      --bg-card: #162032;
-      --accent-blue: #3b82f6;
-      --accent-cyan: #06b6d4;
-      --accent-green: #22c55e;
+      --bg-primary: #09090b;
+      --bg-secondary: #121214;
+      --bg-card: #18181b;
+      --border: #27272a;
+      --border-subtle: #3f3f46;
+      --accent-silver: #e4e4e7;
+      --accent-white: #fafafa;
+      --accent-green: #10b981;
       --accent-red: #ef4444;
       --accent-amber: #f59e0b;
-      --accent-purple: #a855f7;
-      --text-primary: #f1f5f9;
-      --text-secondary: #94a3b8;
-      --border: #334155;
+      --text-primary: #fafafa;
+      --text-secondary: #a1a1aa;
+      --text-muted: #71717a;
     }
     * { box-sizing: border-box; }
     body {
-      font-family: 'Inter', sans-serif;
+      font-family: 'Inter', -apple-system, sans-serif;
       background: var(--bg-primary);
       color: var(--text-primary);
       min-height: 100vh;
+      padding-top: max(1rem, env(safe-area-inset-top));
+      padding-right: max(1rem, env(safe-area-inset-right));
+      padding-bottom: max(1rem, env(safe-area-inset-bottom));
+      padding-left: max(1rem, env(safe-area-inset-left));
     }
     .mono { font-family: 'JetBrains Mono', monospace; }
-    /* Glassmorphism card */
+    /* Industrial Glassmorphism card */
     .glass {
-      background: rgba(30, 41, 59, 0.7);
+      background: rgba(18, 18, 20, 0.85);
       backdrop-filter: blur(16px);
-      border: 1px solid rgba(51, 65, 85, 0.6);
+      border: 1px solid rgba(39, 39, 42, 0.9);
     }
-    /* Gradient text */
+    /* Stark Monochrome Gradient text */
     .grad-text {
-      background: linear-gradient(135deg, #3b82f6, #06b6d4, #a855f7);
+      background: linear-gradient(135deg, #ffffff 0%, #e4e4e7 50%, #a1a1aa 100%);
       -webkit-background-clip: text;
       -webkit-text-fill-color: transparent;
       background-clip: text;
     }
-    /* Pulse ring for active timer */
+    /* Pulse ring for active timer (Monochrome silver glow) */
     @keyframes pulse-ring {
-      0% { box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.4); }
-      70% { box-shadow: 0 0 0 20px rgba(59, 130, 246, 0); }
-      100% { box-shadow: 0 0 0 0 rgba(59, 130, 246, 0); }
+      0% { box-shadow: 0 0 0 0 rgba(244, 244, 245, 0.35); }
+      70% { box-shadow: 0 0 0 16px rgba(244, 244, 245, 0); }
+      100% { box-shadow: 0 0 0 0 rgba(244, 244, 245, 0); }
     }
     .timer-pulse { animation: pulse-ring 2s ease-in-out infinite; }
     /* Slide-in modal */
@@ -75,8 +80,12 @@
     ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
     /* Goal tiers */
     .goal-min { border-left: 3px solid var(--accent-amber); }
-    .goal-target { border-left: 3px solid var(--accent-blue); }
-    .goal-stretch { border-left: 3px solid var(--accent-purple); }
+    .goal-target { border-left: 3px solid var(--accent-silver); }
+    .goal-stretch { border-left: 3px solid var(--accent-green); }
+    /* Mobile Touch target */
+    button, select, input, textarea {
+      touch-action: manipulation;
+    }
     /* Toast */
     @keyframes toast-in {
       from { transform: translateX(120%); opacity: 0; }
@@ -94,8 +103,8 @@
     @keyframes spin { to { transform: rotate(360deg); } }
     .spin { animation: spin 0.8s linear infinite; }
     /* Verdict glow */
-    .verdict-pass { box-shadow: 0 0 30px rgba(34, 197, 94, 0.3); border-color: #22c55e !important; }
-    .verdict-fail { box-shadow: 0 0 30px rgba(239, 68, 68, 0.3); border-color: #ef4444 !important; }
+    .verdict-pass { box-shadow: 0 0 30px rgba(16, 185, 129, 0.25); border-color: #10b981 !important; }
+    .verdict-fail { box-shadow: 0 0 30px rgba(239, 68, 68, 0.25); border-color: #ef4444 !important; }
   </style>
 </head>
 
@@ -106,45 +115,45 @@
   ============================================================ -->
   <header class="glass rounded-2xl p-4 mb-6 flex flex-wrap items-center justify-between gap-4">
     <div class="flex items-center gap-3">
-      <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-lg font-black">⚡</div>
+      <div class="w-10 h-10 rounded-xl bg-zinc-800 border border-zinc-700 flex items-center justify-center text-lg font-black text-zinc-100 shadow-sm">⚡</div>
       <div>
         <h1 class="text-lg font-bold grad-text">Focus Engine</h1>
-        <p class="text-xs text-slate-400 mono">Behavioral Accountability System</p>
+        <p class="text-xs text-zinc-400 mono">Behavioral Accountability System</p>
       </div>
     </div>
     <div class="flex gap-4 flex-wrap">
-      <div id="stat-focused" class="text-center px-4 py-2 rounded-xl bg-blue-500/10 border border-blue-500/30">
-        <div class="text-2xl font-black text-blue-400 mono" id="stat-focused-val">0.0</div>
-        <div class="text-xs text-slate-400">min focused</div>
+      <div id="stat-focused" class="text-center px-4 py-2 rounded-xl bg-zinc-900 border border-zinc-800">
+        <div class="text-2xl font-black text-zinc-100 mono" id="stat-focused-val">0.0</div>
+        <div class="text-xs text-zinc-400">min focused</div>
       </div>
-      <div id="stat-verified" class="text-center px-4 py-2 rounded-xl bg-green-500/10 border border-green-500/30">
-        <div class="text-2xl font-black text-green-400 mono" id="stat-verified-val">0</div>
-        <div class="text-xs text-slate-400">verified</div>
+      <div id="stat-verified" class="text-center px-4 py-2 rounded-xl bg-emerald-500/10 border border-emerald-500/30">
+        <div class="text-2xl font-black text-emerald-400 mono" id="stat-verified-val">0</div>
+        <div class="text-xs text-zinc-400">verified</div>
       </div>
       <div id="stat-latency" class="text-center px-4 py-2 rounded-xl bg-amber-500/10 border border-amber-500/30">
         <div class="text-2xl font-black text-amber-400 mono" id="stat-latency-val">0</div>
-        <div class="text-xs text-slate-400">avg latency (min)</div>
+        <div class="text-xs text-zinc-400">avg latency (min)</div>
       </div>
-      <div id="stat-ratio" class="text-center px-4 py-2 rounded-xl bg-purple-500/10 border border-purple-500/30">
-        <div class="text-2xl font-black text-purple-400 mono" id="stat-ratio-val">0%</div>
-        <div class="text-xs text-slate-400">execution ratio</div>
+      <div id="stat-ratio" class="text-center px-4 py-2 rounded-xl bg-zinc-900 border border-zinc-800">
+        <div class="text-2xl font-black text-zinc-100 mono" id="stat-ratio-val">0%</div>
+        <div class="text-xs text-zinc-400">execution ratio</div>
       </div>
     </div>
     <div class="flex items-center gap-2 flex-wrap">
       <!-- Auth / User badge -->
       <div id="auth-user-badge" onclick="openAuthModal()" title="Click to view Supabase / Google Auth settings"
-        class="px-3 py-1.5 rounded-xl bg-slate-800/80 hover:bg-slate-700/80 border border-slate-700 text-xs flex items-center gap-2 mono cursor-pointer transition">
+        class="px-3 py-1.5 rounded-xl bg-zinc-900 hover:bg-zinc-800 border border-zinc-700 text-xs flex items-center gap-2 mono cursor-pointer transition">
         <span id="auth-status-dot" class="w-2 h-2 rounded-full bg-emerald-400"></span>
-        <span id="auth-user-label" class="text-slate-300">Checking auth…</span>
+        <span id="auth-user-label" class="text-zinc-300">Checking auth…</span>
       </div>
-      <button id="btn-login-google" onclick="signInWithGoogle()" class="hidden bg-white hover:bg-slate-100 text-slate-900 font-semibold px-3 py-1.5 rounded-xl text-xs flex items-center gap-1.5 transition shadow active:scale-95">
+      <button id="btn-login-google" onclick="signInWithGoogle()" class="hidden bg-zinc-100 hover:bg-white text-zinc-950 font-bold px-3 py-1.5 rounded-xl text-xs flex items-center gap-1.5 transition shadow active:scale-95">
         <svg class="w-3.5 h-3.5" viewBox="0 0 24 24"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"/></svg>
         Sign in with Google
       </button>
-      <button id="btn-logout" onclick="logout()" class="hidden text-slate-400 hover:text-red-400 text-xs px-2.5 py-1.5 rounded-lg hover:bg-slate-800 transition">
+      <button id="btn-logout" onclick="logout()" class="hidden text-zinc-400 hover:text-rose-400 text-xs px-2.5 py-1.5 rounded-lg hover:bg-zinc-800 transition">
         Sign Out
       </button>
-      <button id="btn-refresh-stats" onclick="loadStats()" class="text-slate-400 hover:text-white transition text-sm px-3 py-1.5 rounded-lg hover:bg-slate-700">
+      <button id="btn-refresh-stats" onclick="loadStats()" class="text-zinc-400 hover:text-zinc-100 transition text-sm px-3 py-1.5 rounded-lg hover:bg-zinc-800">
         ↻ Refresh
       </button>
     </div>
@@ -160,20 +169,20 @@
 
       <!-- Task Creation Form -->
       <section class="glass rounded-2xl p-5">
-        <h2 class="text-base font-bold text-slate-200 mb-4 flex items-center gap-2">
-          <span class="text-blue-400">＋</span> New Task
+        <h2 class="text-base font-bold text-zinc-200 mb-4 flex items-center gap-2">
+          <span class="text-zinc-100 font-bold">＋</span> New Task
         </h2>
         <form id="task-form" onsubmit="createTask(event)" class="space-y-3">
           <input id="f-title" type="text" placeholder="Task title *" required
-            class="w-full bg-slate-800/60 border border-slate-600 rounded-lg px-3 py-2.5 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-blue-500 transition" />
+            class="w-full bg-zinc-900/80 border border-zinc-700/80 rounded-lg px-3 py-2.5 text-sm text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-zinc-400 focus:ring-1 focus:ring-zinc-400 transition" />
 
           <div class="grid grid-cols-2 gap-2">
-            <select id="f-category" class="bg-slate-800/60 border border-slate-600 rounded-lg px-3 py-2.5 text-sm text-slate-100 focus:outline-none focus:border-blue-500 transition">
+            <select id="f-category" class="bg-zinc-900/80 border border-zinc-700/80 rounded-lg px-3 py-2.5 text-sm text-zinc-100 focus:outline-none focus:border-zinc-400 focus:ring-1 focus:ring-zinc-400 transition">
               <option value="coding">💻 Coding</option>
               <option value="tnp">📊 T&P Aptitude</option>
               <option value="theory">📖 Theory</option>
             </select>
-            <select id="f-priority" class="bg-slate-800/60 border border-slate-600 rounded-lg px-3 py-2.5 text-sm text-slate-100 focus:outline-none focus:border-blue-500 transition">
+            <select id="f-priority" class="bg-zinc-900/80 border border-zinc-700/80 rounded-lg px-3 py-2.5 text-sm text-zinc-100 focus:outline-none focus:border-zinc-400 focus:ring-1 focus:ring-zinc-400 transition">
               <option value="1">P1 – Critical</option>
               <option value="2">P2 – High</option>
               <option value="3" selected>P3 – Normal</option>
@@ -182,35 +191,35 @@
           </div>
 
           <div>
-            <label class="text-xs text-slate-400 mb-1 block">Estimated Duration (min)</label>
+            <label class="text-xs text-zinc-400 mb-1 block">Estimated Duration (min)</label>
             <input id="f-duration" type="number" value="60" min="5"
-              class="w-full bg-slate-800/60 border border-slate-600 rounded-lg px-3 py-2.5 text-sm text-slate-100 focus:outline-none focus:border-blue-500 transition" />
+              class="w-full bg-zinc-900/80 border border-zinc-700/80 rounded-lg px-3 py-2.5 text-sm text-zinc-100 focus:outline-none focus:border-zinc-400 focus:ring-1 focus:ring-zinc-400 transition" />
           </div>
 
           <!-- 3-tier goals -->
           <div class="space-y-2">
-            <label class="text-xs text-slate-400 block">3-Tier Goals (minutes)</label>
+            <label class="text-xs text-zinc-400 block">3-Tier Goals (minutes)</label>
             <div class="grid grid-cols-3 gap-2">
-              <div class="goal-min rounded-lg pl-2 pr-1 py-2 bg-amber-500/5">
+              <div class="goal-min rounded-lg pl-2 pr-1 py-2 bg-amber-500/10">
                 <div class="text-xs text-amber-400 mb-1">Min</div>
                 <input id="f-min" type="number" value="25" min="1"
-                  class="w-full bg-transparent text-sm text-slate-100 focus:outline-none mono" />
+                  class="w-full bg-transparent text-sm text-zinc-100 focus:outline-none mono" />
               </div>
-              <div class="goal-target rounded-lg pl-2 pr-1 py-2 bg-blue-500/5">
-                <div class="text-xs text-blue-400 mb-1">Target</div>
+              <div class="goal-target rounded-lg pl-2 pr-1 py-2 bg-zinc-800/60">
+                <div class="text-xs text-zinc-300 mb-1 font-semibold">Target</div>
                 <input id="f-target" type="number" value="50" min="1"
-                  class="w-full bg-transparent text-sm text-slate-100 focus:outline-none mono" />
+                  class="w-full bg-transparent text-sm text-zinc-100 focus:outline-none mono" />
               </div>
-              <div class="goal-stretch rounded-lg pl-2 pr-1 py-2 bg-purple-500/5">
-                <div class="text-xs text-purple-400 mb-1">Stretch</div>
+              <div class="goal-stretch rounded-lg pl-2 pr-1 py-2 bg-emerald-500/10">
+                <div class="text-xs text-emerald-400 mb-1 font-semibold">Stretch</div>
                 <input id="f-stretch" type="number" value="90" min="1"
-                  class="w-full bg-transparent text-sm text-slate-100 focus:outline-none mono" />
+                  class="w-full bg-transparent text-sm text-zinc-100 focus:outline-none mono" />
               </div>
             </div>
           </div>
 
           <button type="submit" id="btn-create-task" onclick="createTask(event)"
-            class="w-full bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 text-white rounded-lg py-2.5 text-sm font-semibold transition-all duration-200 active:scale-95">
+            class="w-full bg-zinc-100 hover:bg-white text-zinc-950 rounded-lg py-2.5 text-sm font-bold transition-all duration-200 active:scale-95 shadow-sm">
             Create Task
           </button>
         </form>
@@ -218,8 +227,8 @@
 
       <!-- Task List -->
       <section class="glass rounded-2xl p-5">
-        <h2 class="text-base font-bold text-slate-200 mb-3 flex items-center gap-2">
-          <span class="text-cyan-400">◈</span> Tasks
+        <h2 class="text-base font-bold text-zinc-200 mb-3 flex items-center gap-2">
+          <span class="text-zinc-400">◈</span> Tasks
         </h2>
         <div id="task-list" class="space-y-2 max-h-[360px] overflow-y-auto pr-1">
           <p class="text-slate-500 text-sm italic">Loading tasks…</p>
@@ -233,26 +242,26 @@
 
       <!-- Active Focus HUD -->
       <section id="hud-section" class="glass rounded-2xl p-6">
-        <h2 class="text-base font-bold text-slate-200 mb-5 flex items-center gap-2">
-          <span class="text-red-400">●</span> Focus HUD
+        <h2 class="text-base font-bold text-zinc-200 mb-5 flex items-center gap-2">
+          <span class="text-emerald-500">●</span> Focus HUD
         </h2>
 
         <!-- No-session state -->
         <div id="hud-idle" class="text-center py-12">
           <div class="text-6xl mb-4">🎯</div>
-          <p class="text-slate-400 mb-2">No active session.</p>
-          <p class="text-slate-500 text-sm">Select a task below and click <strong class="text-slate-300">Start Session</strong>.</p>
+          <p class="text-zinc-400 mb-2">No active session.</p>
+          <p class="text-zinc-500 text-sm">Select a task below and click <strong class="text-zinc-200">Start Session</strong>.</p>
         </div>
 
         <!-- Active session state (hidden by default) -->
         <div id="hud-active" class="hidden">
           <!-- Timer display -->
           <div class="flex flex-col items-center mb-6">
-            <div id="timer-circle" class="timer-pulse w-40 h-40 rounded-full border-4 border-blue-500 flex items-center justify-center mb-3">
-              <div id="timer-display" class="mono text-4xl font-black text-blue-400">00:00:00</div>
+            <div id="timer-circle" class="timer-pulse w-40 h-40 rounded-full border-4 border-zinc-700 flex items-center justify-center mb-3">
+              <div id="timer-display" class="mono text-4xl font-black text-zinc-100">00:00:00</div>
             </div>
             <div id="task-banner" class="text-center">
-              <p id="session-task-name" class="text-lg font-bold text-slate-100"></p>
+              <p id="session-task-name" class="text-lg font-bold text-zinc-100"></p>
               <p id="session-goal-banner" class="text-sm mt-1"></p>
             </div>
           </div>
@@ -262,43 +271,43 @@
 
           <!-- Distraction Logger -->
           <div class="mb-5">
-            <p class="text-xs text-slate-400 mb-2 uppercase tracking-widest">1-Tap Distraction Log</p>
+            <p class="text-xs text-zinc-400 mb-2 uppercase tracking-widest">1-Tap Distraction Log</p>
             <div class="grid grid-cols-4 gap-2">
               <button onclick="logDistraction('phone')" id="dist-phone"
-                class="dist-btn py-3 rounded-xl bg-red-500/10 border border-red-500/30 hover:bg-red-500/20 text-center transition active:scale-95 flex flex-col items-center gap-1">
+                class="dist-btn py-3 rounded-xl bg-rose-500/10 border border-rose-500/30 hover:bg-rose-500/20 text-center transition active:scale-95 flex flex-col items-center gap-1">
                 <span class="text-xl">📱</span>
-                <span class="text-xs text-red-400">Phone</span>
-                <span class="text-xs text-slate-500 mono dist-count-phone">×0</span>
+                <span class="text-xs text-rose-400">Phone</span>
+                <span class="text-xs text-zinc-500 mono dist-count-phone">×0</span>
               </button>
               <button onclick="logDistraction('youtube')" id="dist-youtube"
-                class="dist-btn py-3 rounded-xl bg-red-500/10 border border-red-500/30 hover:bg-red-500/20 text-center transition active:scale-95 flex flex-col items-center gap-1">
+                class="dist-btn py-3 rounded-xl bg-rose-500/10 border border-rose-500/30 hover:bg-rose-500/20 text-center transition active:scale-95 flex flex-col items-center gap-1">
                 <span class="text-xl">▶️</span>
-                <span class="text-xs text-red-400">YouTube</span>
-                <span class="text-xs text-slate-500 mono dist-count-youtube">×0</span>
+                <span class="text-xs text-rose-400">YouTube</span>
+                <span class="text-xs text-zinc-500 mono dist-count-youtube">×0</span>
               </button>
               <button onclick="logDistraction('overthinking')" id="dist-overthinking"
                 class="dist-btn py-3 rounded-xl bg-amber-500/10 border border-amber-500/30 hover:bg-amber-500/20 text-center transition active:scale-95 flex flex-col items-center gap-1">
                 <span class="text-xl">🌀</span>
                 <span class="text-xs text-amber-400">Overthink</span>
-                <span class="text-xs text-slate-500 mono dist-count-overthinking">×0</span>
+                <span class="text-xs text-zinc-500 mono dist-count-overthinking">×0</span>
               </button>
               <button onclick="logDistraction('other')" id="dist-other"
-                class="dist-btn py-3 rounded-xl bg-slate-500/10 border border-slate-500/30 hover:bg-slate-500/20 text-center transition active:scale-95 flex flex-col items-center gap-1">
+                class="dist-btn py-3 rounded-xl bg-zinc-800/80 border border-zinc-700/80 hover:bg-zinc-750 text-center transition active:scale-95 flex flex-col items-center gap-1">
                 <span class="text-xl">💭</span>
-                <span class="text-xs text-slate-400">Other</span>
-                <span class="text-xs text-slate-500 mono dist-count-other">×0</span>
+                <span class="text-xs text-zinc-400">Other</span>
+                <span class="text-xs text-zinc-500 mono dist-count-other">×0</span>
               </button>
             </div>
           </div>
 
           <!-- Complete & Submit -->
           <button onclick="endSession()" id="btn-end-session"
-            class="w-full bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-500 hover:to-emerald-500 text-white rounded-xl py-3.5 text-sm font-bold transition-all duration-200 active:scale-95">
+            class="w-full bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl py-3.5 text-sm font-bold transition-all duration-200 active:scale-95 shadow-md">
             ✅ Complete & Submit Proof
           </button>
 
           <!-- Paste Warning Banner -->
-          <div id="paste-warning" class="hidden mt-3 px-4 py-3 rounded-xl bg-red-500/10 border border-red-500/40 text-red-300 text-sm text-center">
+          <div id="paste-warning" class="hidden mt-3 px-4 py-3 rounded-xl bg-rose-500/10 border border-rose-500/40 text-rose-300 text-sm text-center">
             ⚠️ <strong>Paste burst detected</strong> by VS Code watchdog. Viva will include paste justification.
           </div>
         </div>
@@ -306,25 +315,25 @@
 
       <!-- Quick Start Panel -->
       <section class="glass rounded-2xl p-5">
-        <h2 class="text-base font-bold text-slate-200 mb-3 flex items-center gap-2">
-          <span class="text-green-400">▶</span> Quick Start
+        <h2 class="text-base font-bold text-zinc-200 mb-3 flex items-center gap-2">
+          <span class="text-emerald-400">▶</span> Quick Start
         </h2>
         <div class="grid grid-cols-2 gap-3">
           <div>
-            <label class="text-xs text-slate-400 mb-1 block">Task</label>
-            <select id="qs-task" class="w-full bg-slate-800/60 border border-slate-600 rounded-lg px-3 py-2 text-sm text-slate-100 focus:outline-none focus:border-blue-500">
+            <label class="text-xs text-zinc-400 mb-1 block">Task</label>
+            <select id="qs-task" class="w-full bg-zinc-900/80 border border-zinc-700/80 rounded-lg px-3 py-2 text-sm text-zinc-100 focus:outline-none focus:border-zinc-400 focus:ring-1 focus:ring-zinc-400">
               <option value="">— Select task —</option>
             </select>
           </div>
           <div class="flex flex-col">
-            <label class="text-xs text-slate-400 mb-1 block">Mode</label>
+            <label class="text-xs text-zinc-400 mb-1 block">Mode</label>
             <div class="flex gap-2">
               <button onclick="startSession(false)" id="btn-start-normal"
-                class="flex-1 bg-blue-600 hover:bg-blue-500 text-white rounded-lg py-2 text-sm font-semibold transition active:scale-95">
+                class="flex-1 bg-zinc-100 hover:bg-white text-zinc-950 rounded-lg py-2 text-sm font-bold transition active:scale-95 shadow-sm">
                 ▶ Start
               </button>
               <button onclick="startSession(true)" id="btn-start-5min"
-                class="flex-1 bg-amber-600 hover:bg-amber-500 text-white rounded-lg py-2 text-sm font-semibold transition active:scale-95" title="5-min micro-session floor">
+                class="flex-1 bg-amber-600 hover:bg-amber-500 text-white rounded-lg py-2 text-sm font-bold transition active:scale-95 shadow-sm" title="5-min micro-session floor">
                 ⚡ 5-min
               </button>
             </div>
@@ -334,10 +343,10 @@
 
       <!-- Today's Sessions Log -->
       <section class="glass rounded-2xl p-5">
-        <h2 class="text-base font-bold text-slate-200 mb-3 flex items-center gap-2">
-          <span class="text-purple-400">📋</span> Today's Sessions
+        <h2 class="text-base font-bold text-zinc-200 mb-3 flex items-center gap-2">
+          <span class="text-zinc-400">📋</span> Today's Sessions
         </h2>
-        <div id="sessions-log" class="space-y-2 max-h-48 overflow-y-auto pr-1 text-sm text-slate-400 italic">
+        <div id="sessions-log" class="space-y-2 max-h-48 overflow-y-auto pr-1 text-sm text-zinc-400 italic">
           Loading…
         </div>
       </section>
@@ -351,22 +360,22 @@
   <section id="friction-analytics-section" class="glass rounded-2xl p-6 my-6">
     <div class="flex items-center justify-between mb-4 flex-wrap gap-2">
       <div class="flex items-center gap-3">
-        <div class="w-9 h-9 rounded-xl bg-gradient-to-br from-amber-500 to-rose-600 flex items-center justify-center text-base font-black">📉</div>
+        <div class="w-9 h-9 rounded-xl bg-zinc-800 border border-zinc-700 flex items-center justify-center text-base font-black text-zinc-100 shadow-sm">📉</div>
         <div>
-          <h2 class="text-base font-bold text-slate-100 flex items-center gap-2">
+          <h2 class="text-base font-bold text-zinc-100 flex items-center gap-2">
             Friction & Behavioral Audit
-            <span class="text-[10px] mono px-2 py-0.5 rounded-full bg-slate-800 text-slate-400 border border-slate-700">F ∈ [0, 100]</span>
+            <span class="text-[10px] mono px-2 py-0.5 rounded-full bg-zinc-900 text-zinc-400 border border-zinc-800">F ∈ [0, 100]</span>
           </h2>
-          <p class="text-xs text-slate-400">Mathematical resistance index quantifying initiation paralysis, delay cascades & interruptions</p>
+          <p class="text-xs text-zinc-400">Mathematical resistance index quantifying initiation paralysis, delay cascades & interruptions</p>
         </div>
       </div>
       <div class="flex items-center gap-2">
-        <select id="friction-days-select" onchange="loadFrictionReport()" class="bg-slate-800/80 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-blue-500 mono">
+        <select id="friction-days-select" onchange="loadFrictionReport()" class="bg-zinc-900 border border-zinc-700 rounded-lg px-2.5 py-1.5 text-xs text-zinc-200 focus:outline-none focus:border-zinc-400 focus:ring-1 focus:ring-zinc-400 mono">
           <option value="7" selected>Past 7 Days</option>
           <option value="14">Past 14 Days</option>
           <option value="30">Past 30 Days</option>
         </select>
-        <button onclick="loadFrictionReport()" class="text-slate-400 hover:text-white transition text-xs px-2.5 py-1.5 rounded-lg hover:bg-slate-800">↻ Refresh</button>
+        <button onclick="loadFrictionReport()" class="text-zinc-400 hover:text-zinc-100 transition text-xs px-2.5 py-1.5 rounded-lg hover:bg-zinc-800">↻ Refresh</button>
       </div>
     </div>
 
@@ -375,52 +384,52 @@
       <span class="text-xl" id="culprit-icon">⚠️</span>
       <div class="flex-1 min-w-0">
         <span class="font-bold tracking-wide uppercase text-[11px] text-amber-300 block" id="culprit-title">Primary Behavioral Bottleneck</span>
-        <span id="culprit-insight" class="text-slate-300 truncate block">Loading behavioral friction analysis…</span>
+        <span id="culprit-insight" class="text-zinc-300 truncate block">Loading behavioral friction analysis…</span>
       </div>
     </div>
 
     <!-- Metric Grid -->
     <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-5">
       <!-- System Friction Index Gauge -->
-      <div class="p-4 rounded-xl bg-slate-800/40 border border-slate-700/60 flex items-center gap-4">
+      <div class="p-4 rounded-xl bg-zinc-900/50 border border-zinc-800 flex items-center gap-4">
         <div id="friction-gauge-circle" class="w-16 h-16 rounded-full border-4 border-emerald-500 flex flex-col items-center justify-center font-black mono text-emerald-400 transition-colors duration-500 flex-shrink-0">
           <span id="friction-gauge-val" class="text-lg">0</span>
-          <span class="text-[9px] text-slate-400 -mt-1">/100</span>
+          <span class="text-[9px] text-zinc-400 -mt-1">/100</span>
         </div>
         <div>
-          <div class="text-xs text-slate-400">System Friction Index</div>
+          <div class="text-xs text-zinc-400">System Friction Index</div>
           <div id="friction-status-badge" class="text-xs font-semibold text-emerald-400 mt-0.5">Optimal Flow (&lt;30)</div>
-          <div class="text-[10px] text-slate-500 mt-1 mono">w₁·Δt + w₂·S + w₃·I + w₄·C + w₅·Int</div>
+          <div class="text-[10px] text-zinc-500 mt-1 mono">w₁·Δt + w₂·S + w₃·I + w₄·C + w₅·Int</div>
         </div>
       </div>
 
       <!-- Total Sessions in window -->
-      <div class="p-4 rounded-xl bg-slate-800/40 border border-slate-700/60">
-        <div class="text-2xl font-black text-cyan-400 mono" id="friction-total-sessions">0</div>
-        <div class="text-xs text-slate-400 mt-1">Sessions Evaluated</div>
-        <div class="text-[10px] text-slate-500">In selected time window</div>
+      <div class="p-4 rounded-xl bg-zinc-900/50 border border-zinc-800">
+        <div class="text-2xl font-black text-zinc-100 mono" id="friction-total-sessions">0</div>
+        <div class="text-xs text-zinc-400 mt-1">Sessions Evaluated</div>
+        <div class="text-[10px] text-zinc-500">In selected time window</div>
       </div>
 
       <!-- Total Distractions -->
-      <div class="p-4 rounded-xl bg-slate-800/40 border border-slate-700/60">
+      <div class="p-4 rounded-xl bg-zinc-900/50 border border-zinc-800">
         <div class="text-2xl font-black text-amber-400 mono" id="friction-total-distractions">0</div>
-        <div class="text-xs text-slate-400 mt-1">Distractions Logged</div>
-        <div class="text-[10px] text-slate-500">Phone, YouTube & Overthinking</div>
+        <div class="text-xs text-zinc-400 mt-1">Distractions Logged</div>
+        <div class="text-[10px] text-zinc-500">Phone, YouTube & Overthinking</div>
       </div>
 
       <!-- Overall Pass Rate -->
-      <div class="p-4 rounded-xl bg-slate-800/40 border border-slate-700/60">
-        <div class="text-2xl font-black text-purple-400 mono" id="friction-overall-passrate">0%</div>
-        <div class="text-xs text-slate-400 mt-1">Viva Defense Pass Rate</div>
-        <div class="text-[10px] text-slate-500">Proof verified sessions</div>
+      <div class="p-4 rounded-xl bg-zinc-900/50 border border-zinc-800">
+        <div class="text-2xl font-black text-emerald-400 mono" id="friction-overall-passrate">0%</div>
+        <div class="text-xs text-zinc-400 mt-1">Viva Defense Pass Rate</div>
+        <div class="text-[10px] text-zinc-500">Proof verified sessions</div>
       </div>
     </div>
 
     <!-- Category Breakdown Cards -->
     <div class="space-y-2">
-      <h3 class="text-xs font-bold text-slate-300 uppercase tracking-wider mb-2">Category Resistance Breakdown</h3>
+      <h3 class="text-xs font-bold text-zinc-300 uppercase tracking-wider mb-2">Category Resistance Breakdown</h3>
       <div class="grid grid-cols-1 md:grid-cols-3 gap-3" id="friction-category-cards">
-        <p class="text-slate-500 text-xs italic">Loading category analytics…</p>
+        <p class="text-zinc-500 text-xs italic">Loading category analytics…</p>
       </div>
     </div>
   </section>
@@ -430,21 +439,21 @@
   ============================================================ -->
 
   <!-- Excuse Auditor Modal -->
-  <div id="modal-excuse" class="hidden fixed inset-0 z-50 flex items-end justify-center p-4 sm:items-center" style="background:rgba(0,0,0,0.7);backdrop-filter:blur(4px)">
-    <div class="modal-enter glass rounded-2xl w-full max-w-lg p-6">
-      <h3 class="text-lg font-bold text-red-400 mb-1">🚨 Excuse Auditor</h3>
-      <p class="text-sm text-slate-400 mb-4">You've snoozed twice. State your reason. It will be evaluated for validity.</p>
+  <div id="modal-excuse" class="hidden fixed inset-0 z-50 flex items-end justify-center p-4 sm:items-center" style="background:rgba(0,0,0,0.85);backdrop-filter:blur(8px)">
+    <div class="modal-enter glass rounded-2xl w-full max-w-lg p-6 border border-zinc-700">
+      <h3 class="text-lg font-bold text-rose-400 mb-1">🚨 Excuse Auditor</h3>
+      <p class="text-sm text-zinc-400 mb-4">You've snoozed twice. State your reason. It will be evaluated for validity.</p>
       <input id="excuse-schedule-id" type="hidden" />
       <textarea id="excuse-reason" rows="3" placeholder="State your reason honestly…"
-        class="w-full bg-slate-800/60 border border-slate-600 rounded-lg px-3 py-2 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-red-500 transition mb-3 resize-none"></textarea>
+        class="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-rose-500 transition mb-3 resize-none"></textarea>
       <div id="excuse-result" class="hidden mb-3 px-4 py-3 rounded-xl text-sm border"></div>
       <div class="flex gap-2">
         <button onclick="submitExcuse()" id="btn-submit-excuse"
-          class="flex-1 bg-red-600 hover:bg-red-500 text-white rounded-lg py-2.5 text-sm font-bold transition active:scale-95">
+          class="flex-1 bg-rose-600 hover:bg-rose-500 text-white rounded-lg py-2.5 text-sm font-bold transition active:scale-95 shadow-sm">
           Submit for Audit
         </button>
         <button onclick="closeModal('modal-excuse')"
-          class="px-4 py-2.5 rounded-lg text-slate-400 hover:bg-slate-700 text-sm transition">
+          class="px-4 py-2.5 rounded-lg text-zinc-400 hover:bg-zinc-800 text-sm transition">
           Close
         </button>
       </div>
@@ -452,33 +461,33 @@
   </div>
 
   <!-- Viva Modal -->
-  <div id="modal-viva" class="hidden fixed inset-0 z-50 flex items-end justify-center p-4 sm:items-center" style="background:rgba(0,0,0,0.7);backdrop-filter:blur(4px)">
-    <div class="modal-enter glass rounded-2xl w-full max-w-2xl p-6">
+  <div id="modal-viva" class="hidden fixed inset-0 z-50 flex items-end justify-center p-4 sm:items-center" style="background:rgba(0,0,0,0.85);backdrop-filter:blur(8px)">
+    <div class="modal-enter glass rounded-2xl w-full max-w-2xl p-6 border border-zinc-700">
 
       <!-- Step 1: Paste Proof -->
       <div id="viva-step-1">
-        <h3 class="text-lg font-bold text-cyan-400 mb-1">📎 Step 1 – Submit Proof</h3>
-        <p class="text-sm text-slate-400 mb-3">Paste your code snippet, theory notes, or aptitude scorecard below. The AI will generate a viva question based on this.</p>
+        <h3 class="text-lg font-bold text-zinc-100 mb-1">📎 Step 1 – Submit Proof</h3>
+        <p class="text-sm text-zinc-400 mb-3">Paste your code snippet, theory notes, or aptitude scorecard below. The AI will generate a viva question based on this.</p>
         <textarea id="viva-proof" rows="8" placeholder="Paste your code / notes / scorecard here…"
-          class="w-full bg-slate-900/60 border border-slate-600 rounded-lg px-3 py-2 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-cyan-500 transition mb-3 resize-y mono font-medium"></textarea>
+          class="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-zinc-400 focus:ring-1 focus:ring-zinc-400 transition mb-3 resize-y mono font-medium"></textarea>
         <div class="flex gap-2">
           <button onclick="requestViva()" id="btn-request-viva"
-            class="flex-1 bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white rounded-lg py-2.5 text-sm font-bold transition active:scale-95">
+            class="flex-1 bg-zinc-100 hover:bg-white text-zinc-950 rounded-lg py-2.5 text-sm font-bold transition active:scale-95 shadow-sm">
             Generate Viva Question →
           </button>
-          <button onclick="closeModal('modal-viva')" class="px-4 py-2.5 rounded-lg text-slate-400 hover:bg-slate-700 text-sm transition">Cancel</button>
+          <button onclick="closeModal('modal-viva')" class="px-4 py-2.5 rounded-lg text-zinc-400 hover:bg-zinc-800 text-sm transition">Cancel</button>
         </div>
       </div>
 
       <!-- Step 2: Answer the Question -->
       <div id="viva-step-2" class="hidden">
-        <h3 class="text-lg font-bold text-blue-400 mb-1">🎯 Step 2 – Answer Viva Question</h3>
-        <div id="viva-question-box" class="mb-4 px-4 py-3 rounded-xl bg-blue-500/10 border border-blue-500/40 text-blue-100 text-sm mono leading-relaxed"></div>
+        <h3 class="text-lg font-bold text-zinc-100 mb-1">🎯 Step 2 – Answer Viva Question</h3>
+        <div id="viva-question-box" class="mb-4 px-4 py-3 rounded-xl bg-zinc-900 border border-zinc-700 text-zinc-200 text-sm mono leading-relaxed"></div>
         <textarea id="viva-answer" rows="5" placeholder="Type your answer here. Be precise and technical."
-          class="w-full bg-slate-900/60 border border-slate-600 rounded-lg px-3 py-2 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-blue-500 transition mb-3 resize-y"></textarea>
+          class="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-zinc-400 focus:ring-1 focus:ring-zinc-400 transition mb-3 resize-y"></textarea>
         <div class="flex gap-2">
           <button onclick="submitViva()" id="btn-submit-viva"
-            class="flex-1 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 text-white rounded-lg py-2.5 text-sm font-bold transition active:scale-95">
+            class="flex-1 bg-zinc-100 hover:bg-white text-zinc-950 rounded-lg py-2.5 text-sm font-bold transition active:scale-95 shadow-sm">
             Submit Answer →
           </button>
         </div>
@@ -489,7 +498,7 @@
         <h3 class="text-lg font-bold mb-3" id="viva-verdict-title"></h3>
         <div id="viva-verdict-box" class="px-5 py-4 rounded-xl border text-sm leading-relaxed mb-4 mono whitespace-pre-wrap"></div>
         <button onclick="closeModal('modal-viva'); loadStats(); loadFrictionReport();"
-          class="w-full bg-slate-700 hover:bg-slate-600 text-white rounded-lg py-2.5 text-sm font-bold transition active:scale-95">
+          class="w-full bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-100 rounded-lg py-2.5 text-sm font-bold transition active:scale-95">
           Done
         </button>
       </div>
@@ -497,44 +506,44 @@
   </div>
 
   <!-- Micro-Start Gate Modal (Resistance Score > 75 / Critical Tracks) -->
-  <div id="modal-micro-start" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4" style="background:rgba(0,0,0,0.8);backdrop-filter:blur(8px)">
-    <div class="modal-enter glass rounded-2xl w-full max-w-lg p-6 space-y-4 border border-amber-500/30">
-      <div class="flex items-center justify-between pb-3 border-b border-slate-700/60">
+  <div id="modal-micro-start" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4" style="background:rgba(0,0,0,0.85);backdrop-filter:blur(8px)">
+    <div class="modal-enter glass rounded-2xl w-full max-w-lg p-6 space-y-4 border border-zinc-700">
+      <div class="flex items-center justify-between pb-3 border-b border-zinc-800">
         <div class="flex items-center gap-2">
           <span class="text-2xl">⚡</span>
           <h3 class="text-lg font-bold text-amber-300">Micro-Start Initiation Gate</h3>
         </div>
-        <button onclick="closeModal('modal-micro-start')" class="text-slate-400 hover:text-white text-lg">✕</button>
+        <button onclick="closeModal('modal-micro-start')" class="text-zinc-400 hover:text-white text-lg">✕</button>
       </div>
 
       <div class="p-4 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-200 text-sm space-y-2">
         <p class="font-semibold text-amber-300">🚨 High Friction Track Resistance Detected (>75 Score)</p>
-        <p class="text-xs text-slate-300">
+        <p class="text-xs text-zinc-300">
           This track exhibits high initiation drop-off. The default block duration has been capped to a <span class="font-bold text-white">25-minute Pomodoro</span>. Physical phone isolation is enforced (>3m boundary).
         </p>
       </div>
 
       <div class="space-y-3 py-1">
-        <h4 class="text-xs uppercase tracking-wider text-slate-400 font-bold">5-Minute Atomic Setup Checklist:</h4>
-        <div class="space-y-2 text-sm text-slate-300">
-          <div class="flex items-start gap-2.5 p-2.5 rounded-lg bg-slate-800/60 border border-slate-700/50">
+        <h4 class="text-xs uppercase tracking-wider text-zinc-400 font-bold">5-Minute Atomic Setup Checklist:</h4>
+        <div class="space-y-2 text-sm text-zinc-300">
+          <div class="flex items-start gap-2.5 p-2.5 rounded-lg bg-zinc-900 border border-zinc-800">
             <span class="text-amber-400 font-bold">1.</span>
             <span><strong class="text-white">Boundary Isolation:</strong> Place your mobile phone outside arm's reach (&gt;3 meters away).</span>
           </div>
-          <div class="flex items-start gap-2.5 p-2.5 rounded-lg bg-slate-800/60 border border-slate-700/50">
+          <div class="flex items-start gap-2.5 p-2.5 rounded-lg bg-zinc-900 border border-zinc-800">
             <span class="text-amber-400 font-bold">2.</span>
             <span><strong class="text-white">Atomic Goal:</strong> Step 1 – Write down exactly 1 specific test case or question heading.</span>
           </div>
-          <div class="flex items-start gap-2.5 p-2.5 rounded-lg bg-slate-800/60 border border-slate-700/50">
+          <div class="flex items-start gap-2.5 p-2.5 rounded-lg bg-zinc-900 border border-zinc-800">
             <span class="text-amber-400 font-bold">3.</span>
             <span><strong class="text-white">Dirty Start:</strong> Write draft code or notes immediately without setup perfectionism.</span>
           </div>
         </div>
       </div>
 
-      <div class="pt-2 flex items-center justify-between border-t border-slate-700/60">
-        <span class="text-xs text-slate-400">Viva proof requirements suppressed during initial 5m floor.</span>
-        <button onclick="confirmMicroStart()" class="px-5 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-900 font-bold text-sm shadow-lg transition active:scale-95">
+      <div class="pt-2 flex items-center justify-between border-t border-zinc-800">
+        <span class="text-xs text-zinc-400">Viva proof requirements suppressed during initial 5m floor.</span>
+        <button onclick="confirmMicroStart()" class="px-5 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-zinc-950 font-bold text-sm shadow-lg transition active:scale-95">
           Commence 5-Min Gate →
         </button>
       </div>
@@ -542,59 +551,59 @@
   </div>
 
   <!-- Auth / Google Sign-In Modal -->
-  <div id="modal-auth" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4" style="background:rgba(0,0,0,0.75);backdrop-filter:blur(6px)">
-    <div class="modal-enter glass rounded-2xl w-full max-w-md p-6 space-y-4">
+  <div id="modal-auth" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4" style="background:rgba(0,0,0,0.85);backdrop-filter:blur(8px)">
+    <div class="modal-enter glass rounded-2xl w-full max-w-md p-6 space-y-4 border border-zinc-700">
       <div class="flex items-center justify-between">
         <h3 class="text-lg font-bold grad-text flex items-center gap-2">
           <span>⚡</span> Supabase & Google Auth
         </h3>
-        <button onclick="closeModal('modal-auth')" class="text-slate-400 hover:text-white text-lg">✕</button>
+        <button onclick="closeModal('modal-auth')" class="text-zinc-400 hover:text-white text-lg">✕</button>
       </div>
-      <p class="text-xs text-slate-400 leading-relaxed">
+      <p class="text-xs text-zinc-400 leading-relaxed">
         Sign in to isolate and synchronize your focus sessions, excuses, and viva verifications with hosted Supabase PostgreSQL.
       </p>
 
       <div class="space-y-3 pt-1">
         <button id="btn-oauth-google" onclick="signInWithGoogle()"
-          class="w-full bg-white hover:bg-slate-100 text-slate-900 font-semibold rounded-xl py-3 text-sm flex items-center justify-center gap-2 transition shadow active:scale-95">
+          class="w-full bg-zinc-100 hover:bg-white text-zinc-950 font-bold rounded-xl py-3 text-sm flex items-center justify-center gap-2 transition shadow active:scale-95">
           <svg class="w-4 h-4" viewBox="0 0 24 24"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"/></svg>
           Continue with Google
         </button>
 
         <button id="btn-dev-login" onclick="loginWithDevToken()"
-          class="w-full bg-slate-800/90 hover:bg-slate-700/90 text-slate-200 border border-slate-600 rounded-xl py-2.5 text-xs font-semibold flex items-center justify-center gap-2 transition active:scale-95 shadow">
+          class="w-full bg-zinc-800 hover:bg-zinc-700 text-zinc-200 border border-zinc-700 rounded-xl py-2.5 text-xs font-semibold flex items-center justify-center gap-2 transition active:scale-95 shadow">
           <span>⚡</span> Quick Sign In as Dev User (Local Bypass)
         </button>
 
         <div class="relative flex py-2 items-center">
-          <div class="flex-grow border-t border-slate-700"></div>
-          <span class="flex-shrink mx-2 text-[10px] text-slate-500 uppercase tracking-wider">or custom token / credentials</span>
-          <div class="flex-grow border-t border-slate-700"></div>
+          <div class="flex-grow border-t border-zinc-800"></div>
+          <span class="flex-shrink mx-2 text-[10px] text-zinc-500 uppercase tracking-wider">or custom token / credentials</span>
+          <div class="flex-grow border-t border-zinc-800"></div>
         </div>
 
         <div class="space-y-2.5 text-xs">
           <div>
-            <label class="text-slate-400 block mb-1">Supabase Project URL</label>
+            <label class="text-zinc-400 block mb-1">Supabase Project URL</label>
             <input id="auth-sb-url" type="url" placeholder="https://xyzcompany.supabase.co"
-              class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-slate-200 placeholder-slate-600 focus:outline-none focus:border-blue-500 mono" />
+              class="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-zinc-200 placeholder-zinc-600 focus:outline-none focus:border-zinc-400 focus:ring-1 focus:ring-zinc-400 mono" />
           </div>
           <div>
-            <label class="text-slate-400 block mb-1">Supabase Anon Key</label>
+            <label class="text-zinc-400 block mb-1">Supabase Anon Key</label>
             <input id="auth-sb-anon" type="text" placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
-              class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-slate-200 placeholder-slate-600 focus:outline-none focus:border-blue-500 mono" />
+              class="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-zinc-200 placeholder-zinc-600 focus:outline-none focus:border-zinc-400 focus:ring-1 focus:ring-zinc-400 mono" />
           </div>
           <div>
-            <label class="text-slate-400 block mb-1">Manual JWT Bearer Token</label>
+            <label class="text-zinc-400 block mb-1">Manual JWT Bearer Token</label>
             <textarea id="auth-manual-token" rows="2" placeholder="Paste custom Supabase / Google Bearer token here..."
-              class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-slate-200 placeholder-slate-600 focus:outline-none focus:border-blue-500 mono text-xs"></textarea>
+              class="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-zinc-200 placeholder-zinc-600 focus:outline-none focus:border-zinc-400 focus:ring-1 focus:ring-zinc-400 mono text-xs"></textarea>
           </div>
         </div>
 
         <div class="flex gap-2 pt-2">
-          <button onclick="saveAuthSettings()" class="flex-1 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 text-white rounded-lg py-2.5 text-xs font-semibold transition active:scale-95">
+          <button onclick="saveAuthSettings()" class="flex-1 bg-zinc-100 hover:bg-white text-zinc-950 font-bold rounded-lg py-2.5 text-xs transition active:scale-95 shadow-sm">
             Save & Connect
           </button>
-          <button onclick="clearAuthToken()" class="px-3 py-2.5 rounded-lg text-slate-400 hover:bg-slate-800 text-xs transition">
+          <button onclick="clearAuthToken()" class="px-3 py-2.5 rounded-lg text-zinc-400 hover:bg-zinc-800 text-xs transition">
             Clear Token
           </button>
         </div>
@@ -842,10 +851,10 @@
     // ---------------------------------------------------------------
     function toast(msg, type = 'info') {
       const colors = {
-        info:    'bg-slate-700 border-slate-500',
-        success: 'bg-green-900/80 border-green-600',
-        error:   'bg-red-900/80 border-red-600',
-        warning: 'bg-amber-900/80 border-amber-600',
+        info:    'bg-zinc-900 border-zinc-700 text-zinc-100',
+        success: 'bg-zinc-900 border-emerald-600/70 text-emerald-300',
+        error:   'bg-zinc-900 border-rose-600/70 text-rose-300',
+        warning: 'bg-zinc-900 border-amber-600/70 text-amber-300',
       };
       const el = document.createElement('div');
       el.className = `toast-enter px-4 py-3 rounded-xl border text-sm text-slate-100 ${colors[type]} shadow-xl`;
@@ -1041,22 +1050,22 @@
       const el = document.getElementById('task-list');
       if (!tasks.length) { el.innerHTML = '<p class="text-slate-500 text-sm italic">No tasks yet.</p>'; return; }
       const catIcon = { coding: '💻', tnp: '📊', theory: '📖' };
-      const priBadge = { 1: 'text-red-400 bg-red-400/10', 2: 'text-orange-400 bg-orange-400/10', 3: 'text-blue-400 bg-blue-400/10', 4: 'text-slate-400 bg-slate-400/10', 5: 'text-slate-500 bg-slate-500/10' };
+      const priBadge = { 1: 'text-rose-400 bg-rose-400/10 border border-rose-500/30', 2: 'text-amber-400 bg-amber-400/10 border border-amber-500/30', 3: 'text-zinc-300 bg-zinc-800 border border-zinc-700', 4: 'text-zinc-400 bg-zinc-900', 5: 'text-zinc-500 bg-zinc-900' };
       el.innerHTML = tasks.map(t => `
-        <div class="flex items-center gap-2 px-3 py-2.5 rounded-xl bg-slate-800/50 border border-slate-700/50 hover:border-slate-600 transition group">
+        <div class="flex items-center gap-2 px-3 py-2.5 rounded-xl bg-zinc-900/60 border border-zinc-800 hover:border-zinc-700 transition group">
           <span class="text-base">${catIcon[t.category] || '📋'}</span>
           <div class="flex-1 min-w-0">
-            <p class="text-sm font-medium text-slate-200 truncate">${t.title}</p>
+            <p class="text-sm font-medium text-zinc-200 truncate">${t.title}</p>
             <div class="flex gap-2 mt-0.5">
-              <span class="text-xs px-1.5 py-0.5 rounded ${priBadge[t.priority] || 'text-slate-400'}">P${t.priority}</span>
-              <span class="text-xs text-slate-500">${t.estimated_duration_min}min</span>
+              <span class="text-xs px-1.5 py-0.5 rounded ${priBadge[t.priority] || 'text-zinc-400'}">P${t.priority}</span>
+              <span class="text-xs text-zinc-500">${t.estimated_duration_min}min</span>
               <span class="text-xs text-amber-400">${t.min_goal}↑</span>
-              <span class="text-xs text-blue-400">${t.target_goal}↑</span>
-              <span class="text-xs text-purple-400">${t.stretch_goal}↑</span>
+              <span class="text-xs text-zinc-300 font-medium">${t.target_goal}↑</span>
+              <span class="text-xs text-emerald-400 font-medium">${t.stretch_goal}↑</span>
             </div>
           </div>
           <button onclick="selectTask('${t.id}')"
-            class="opacity-0 group-hover:opacity-100 text-xs px-2 py-1 rounded-lg bg-blue-600 hover:bg-blue-500 text-white transition">
+            class="opacity-0 group-hover:opacity-100 text-xs px-2.5 py-1 rounded-lg bg-zinc-200 hover:bg-white text-zinc-950 font-bold transition">
             Select
           </button>
         </div>
@@ -1271,10 +1280,10 @@
       const el = document.getElementById('session-goal-banner');
       el.innerHTML = `
         <span class="text-amber-400">Min: ${activeTaskData.min_goal}m</span>
-        <span class="mx-2 text-slate-600">|</span>
-        <span class="text-blue-400">Target: ${activeTaskData.target_goal}m</span>
-        <span class="mx-2 text-slate-600">|</span>
-        <span class="text-purple-400">Stretch: ${activeTaskData.stretch_goal}m</span>
+        <span class="mx-2 text-zinc-600">|</span>
+        <span class="text-zinc-200 font-medium">Target: ${activeTaskData.target_goal}m</span>
+        <span class="mx-2 text-zinc-600">|</span>
+        <span class="text-emerald-400 font-medium">Stretch: ${activeTaskData.stretch_goal}m</span>
       `;
     }
 
@@ -1292,14 +1301,14 @@
           const elapsedMin = elapsed / 60;
           const tc = document.getElementById('timer-circle');
           if (elapsedMin >= activeTaskData.stretch_goal) {
-            tc.style.borderColor = '#a855f7';
-            document.getElementById('timer-display').style.color = '#a855f7';
+            tc.style.borderColor = '#10b981';
+            document.getElementById('timer-display').style.color = '#10b981';
           } else if (elapsedMin >= activeTaskData.target_goal) {
-            tc.style.borderColor = '#3b82f6';
-            document.getElementById('timer-display').style.color = '#3b82f6';
+            tc.style.borderColor = '#fafafa';
+            document.getElementById('timer-display').style.color = '#fafafa';
           } else if (elapsedMin >= activeTaskData.min_goal) {
-            tc.style.borderColor = '#22c55e';
-            document.getElementById('timer-display').style.color = '#22c55e';
+            tc.style.borderColor = '#f59e0b';
+            document.getElementById('timer-display').style.color = '#f59e0b';
           }
         }
       }, 1000);
