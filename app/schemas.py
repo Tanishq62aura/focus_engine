@@ -5,7 +5,7 @@ Pydantic v2 request/response schemas for the Focus Engine API.
 from __future__ import annotations
 
 from datetime import datetime
-from typing import List, Literal, Optional
+from typing import Any, Dict, List, Literal, Optional
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
@@ -260,4 +260,48 @@ class FrictionAnalysisReport(BaseModel):
     categories: list[CategoryFrictionStats]
     culprit: Optional[HighFrictionCulprit] = None
     high_friction_culprit: Optional[HighFrictionCulprit] = None
+
+
+# ---------------------------------------------------------------------------
+# Excuse Clustering & Behavioral Resistance
+# ---------------------------------------------------------------------------
+class ExcuseClusterItem(BaseModel):
+    cluster_id: str
+    name: str
+    icon: str
+    count: int
+    percentage: float
+    severity: float
+    remediation: str
+    tracks_impacted: dict[str, int]
+    sample_quotes: list[str]
+
+
+class TrackResistanceItem(BaseModel):
+    track: str
+    display_name: str
+    total_sessions: int
+    total_focused_hours: float
+    total_interruptions: int
+    distraction_count: int
+    excuse_count: int
+    early_distractions_first_10m: int
+    early_distraction_ratio: float
+    interruption_rate_per_hour: float
+    avg_start_latency_min: float
+    high_initiation_resistance: bool
+    adjusted_baseline_latency_penalty_min: float
+    resistance_score: float
+    recommendation: str
+
+
+class ExcuseClusterReport(BaseModel):
+    period_days: int
+    cutoff_timestamp: str
+    total_interruptions_analyzed: int
+    primary_friction_cluster: str
+    average_resistance_score: float
+    clusters: list[ExcuseClusterItem]
+    tracks: dict[str, TrackResistanceItem]
+    meta: dict[str, Any]
 

@@ -549,3 +549,19 @@ def friction_analysis(
 ):
     return crud.get_weekly_friction_report(db, user_id=current_user, days=days)
 
+
+@app.get("/reports/excuse-clusters", response_model=schemas.ExcuseClusterReport)
+def excuse_clusters_report(
+    days: int = 14,
+    db: Session = Depends(get_db),
+    current_user: str = Depends(get_current_user),
+):
+    """
+    Aggregates logged rationalizations and distractions, clusters behavioral friction triggers,
+    and calculates initiation resistance and baseline latency penalties across tracks.
+    """
+    from app.analytics.friction_clustering import ExcuseClusterEngine
+
+    engine = ExcuseClusterEngine(db, user_id=current_user, days=days)
+    return engine.run_analysis()
+
