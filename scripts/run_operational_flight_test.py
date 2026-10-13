@@ -9,6 +9,7 @@ import sys
 import urllib.request
 import urllib.error
 from datetime import datetime, timezone
+from pathlib import Path
 from dotenv import load_dotenv
 from jose import jwt
 from sqlalchemy import create_engine, text
@@ -161,17 +162,24 @@ def main():
         "            merged.append(curr)\n"
         "    return merged\n"
     )
+    scratch_file = Path("workspace_proof_flight_test.py")
+    scratch_file.write_text(code_proof, encoding="utf-8")
+
     complete_payload = {
         "code_snippet": code_proof,
         "duration_minutes": 60,
         "notes": "Simulated live 60-minute study block execution.",
     }
-    code, complete_data = api_call("POST", "/sessions/active/complete", complete_payload)
-    assert code == 200, f"Complete session failed ({code}): {complete_data}"
-    viva_question = complete_data.get("viva_question")
-    print(f"  [OK] Session Marked Completed | Focused Seconds: {complete_data.get('actual_focused_seconds')}s (60 min)")
-    print(f"       Verification Status: {complete_data.get('verification_status')}")
-    print(f"       Generated Viva Question:\n       \"{viva_question}\"")
+    try:
+        code, complete_data = api_call("POST", "/sessions/active/complete", complete_payload)
+        assert code == 200, f"Complete session failed ({code}): {complete_data}"
+        viva_question = complete_data.get("viva_question")
+        print(f"  [OK] Session Marked Completed | Focused Seconds: {complete_data.get('actual_focused_seconds')}s (60 min)")
+        print(f"       Verification Status: {complete_data.get('verification_status')}")
+        print(f"       Generated Viva Question:\n       \"{viva_question}\"")
+    finally:
+        if scratch_file.exists():
+            scratch_file.unlink()
 
     # 3b. Submit Viva Defense Answer
     print("\n>>> STEP 3b: Submitting Viva Defense Answer (POST /sessions/{session_id}/submit-viva)")

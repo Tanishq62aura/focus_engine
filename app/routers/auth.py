@@ -47,7 +47,15 @@ if SUPABASE_URL and SUPABASE_ANON_KEY:
 
 def _generate_jwt(user_id: str, email: str) -> str:
     """Generates an authentic HS256 JWT compatible with Supabase auth."""
-    secret = SUPABASE_JWT_SECRET or "supabase-jwt-secret-njxlltvrcmqinrnhlpgh"
+    secret = SUPABASE_JWT_SECRET
+    if not secret:
+        if AUTH_DISABLED:
+            secret = "dev-insecure-local-only-key"
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="SUPABASE_JWT_SECRET must be configured in environment variables.",
+            )
     if not jwt:
         raise HTTPException(status_code=500, detail="JWT library unavailable on server")
     
@@ -241,8 +249,15 @@ def auth_status(credentials: Optional[HTTPAuthorizationCredentials] = Depends(be
         }
 
 
+DEV_MODE = os.getenv("DEV_MODE", "true").lower() in ("true", "1", "yes")
+
 @router.post("/dev-token")
 def issue_dev_token():
     """Generates an authentic HS256 development JWT for local testing and dev mode."""
+    if not DEV_MODE and not AUTH_DISABLED:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Development bypass token is disabled in production.",
+        )
     token = _generate_jwt(DEV_USER_ID, "dev-user@local")
     return {"access_token": token, "token_type": "bearer", "user_id": DEV_USER_ID}

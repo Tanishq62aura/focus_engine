@@ -105,6 +105,32 @@
     /* Verdict glow */
     .verdict-pass { box-shadow: 0 0 30px rgba(16, 185, 129, 0.25); border-color: #10b981 !important; }
     .verdict-fail { box-shadow: 0 0 30px rgba(239, 68, 68, 0.25); border-color: #ef4444 !important; }
+
+    /* Mobile-first bottom navigation & touch refinements */
+    @media (max-width: 767px) {
+      body {
+        padding-bottom: calc(5.5rem + env(safe-area-inset-bottom)) !important;
+        padding-left: max(0.75rem, env(safe-area-inset-left)) !important;
+        padding-right: max(0.75rem, env(safe-area-inset-right)) !important;
+      }
+      .sheet-drag-handle {
+        width: 40px;
+        height: 4px;
+        border-radius: 9999px;
+        background: #3f3f46;
+        margin: 0 auto 12px auto;
+        cursor: grab;
+      }
+      .modal-enter {
+        border-bottom-left-radius: 0 !important;
+        border-bottom-right-radius: 0 !important;
+        max-height: 88vh;
+        overflow-y: auto;
+      }
+      * {
+        -webkit-tap-highlight-color: transparent;
+      }
+    }
   </style>
 </head>
 
@@ -140,6 +166,30 @@
       </div>
     </div>
     <div class="flex items-center gap-2 flex-wrap">
+      <!-- Streak Status Badge -->
+      <div id="streak-badge" onclick="loadStreakReport()" title="Strict Stakes Engine: Min 2 verified PASS blocks/day"
+        class="px-3 py-1.5 rounded-xl bg-zinc-900 hover:bg-zinc-800 border border-zinc-700 text-xs flex items-center gap-1.5 font-mono text-zinc-300 shadow-sm cursor-pointer transition">
+        <svg class="w-3.5 h-3.5 text-amber-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></svg>
+        <span id="streak-count-label">STREAK: 0 DAYS</span>
+      </div>
+
+      <!-- Ambient Audio Soundscape Controller -->
+      <div id="audio-soundscape-bar" class="px-2.5 py-1 rounded-xl bg-zinc-900 border border-zinc-700 text-xs flex items-center gap-2 font-mono">
+        <div class="flex items-center gap-1 text-zinc-400" title="Web Audio Ambient Synthesizer">
+          <svg id="audio-status-icon" class="w-3.5 h-3.5 text-zinc-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>
+        </div>
+        <select id="audio-channel-select" onchange="soundscapeEngine.setChannel(this.value)" class="bg-zinc-950 border border-zinc-800 rounded px-2 py-0.5 text-[11px] text-zinc-200 focus:outline-none focus:border-zinc-500">
+          <option value="off" selected>Audio: Off</option>
+          <option value="brown">Brown Noise</option>
+          <option value="binaural">Binaural 40Hz (Gamma)</option>
+          <option value="rainfall">Rainfall</option>
+        </select>
+        <input id="audio-volume-slider" type="range" min="0" max="100" value="50" oninput="soundscapeEngine.setVolume(this.value / 100)" class="w-14 h-1 bg-zinc-800 rounded accent-zinc-200 cursor-pointer" title="Ambient Volume" />
+        <button id="btn-audio-mute" onclick="toggleAudioMute()" class="text-zinc-400 hover:text-zinc-200 transition p-0.5 rounded" title="Mute/Unmute Ambient Audio">
+          <svg id="audio-mute-icon" class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><line x1="23" y1="9" x2="17" y2="15"/><line x1="17" y1="9" x2="23" y2="15"/></svg>
+        </button>
+      </div>
+
       <!-- Auth / User badge -->
       <div id="auth-user-badge" onclick="openAuthModal()" title="Click to view Supabase / Google Auth settings"
         class="px-3 py-1.5 rounded-xl bg-zinc-900 hover:bg-zinc-800 border border-zinc-700 text-xs flex items-center gap-2 mono cursor-pointer transition">
@@ -277,6 +327,20 @@
             </div>
           </div>
 
+          <!-- Zen Mode & Park Thought HUD Actions -->
+          <div class="flex items-center justify-center gap-2.5 mb-5 flex-wrap">
+            <button id="btn-zen-mode" onclick="toggleZenMode()"
+              class="px-3.5 py-1.5 rounded-xl bg-zinc-900 hover:bg-zinc-800 text-zinc-100 border border-zinc-700 hover:border-zinc-500 text-xs font-mono font-semibold flex items-center gap-1.5 transition shadow-sm active:scale-95" title="Toggle Fullscreen Zen Kiosk Mode (Hotkey: F)">
+              <svg class="w-3.5 h-3.5 text-zinc-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/></svg>
+              <span>Zen Mode [F]</span>
+            </button>
+            <button id="btn-park-thought-hud" onclick="openParkedThoughtModal()"
+              class="px-3.5 py-1.5 rounded-xl bg-zinc-900 hover:bg-zinc-800 text-amber-300 border border-zinc-700 hover:border-amber-500/50 text-xs font-mono font-semibold flex items-center gap-1.5 transition shadow-sm active:scale-95" title="Park fleeting distraction (Hotkey: Alt+D)">
+              <svg class="w-3.5 h-3.5 text-amber-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+              <span>+ Park Thought [Alt+D]</span>
+            </button>
+          </div>
+
           <!-- Latency warning -->
           <div id="latency-banner" class="hidden mb-4 px-4 py-2 rounded-lg bg-amber-500/10 border border-amber-500/40 text-amber-300 text-sm text-center mono"></div>
 
@@ -392,6 +456,62 @@
       </div>
     </div>
 
+    <!-- ============================================================
+         DAILY EXECUTION SCORECARD (EOD Digest KPI Widget)
+    ============================================================ -->
+    <div id="widget-daily-scorecard" class="mb-6 p-5 rounded-2xl bg-zinc-900/80 border border-zinc-800 shadow-xl">
+      <div class="flex items-center justify-between mb-4 flex-wrap gap-2">
+        <div class="flex items-center gap-2.5">
+          <div class="w-8 h-8 rounded-lg bg-zinc-800 border border-zinc-700 flex items-center justify-center text-zinc-100">
+            <svg class="w-4 h-4 text-zinc-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20V10"/><path d="M18 20V4"/><path d="M6 20v-4"/></svg>
+          </div>
+          <div>
+            <h3 class="text-xs font-bold uppercase tracking-wider text-zinc-200">Daily Execution Scorecard (DEI)</h3>
+            <p class="text-[11px] text-zinc-400" id="scorecard-date-label">Today's verified execution volume & behavioral discipline</p>
+          </div>
+        </div>
+        <div class="flex items-center gap-2">
+          <span id="scorecard-status-pill" class="px-2.5 py-1 rounded-full text-xs font-mono font-bold uppercase tracking-wider bg-zinc-800 text-zinc-100 border border-zinc-700">[OPTIMAL]</span>
+          <button id="btn-refresh-scorecard" onclick="loadDailyScorecard()" class="p-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-300 border border-zinc-700 transition" title="Refresh Daily Scorecard">
+            <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/><path d="M16 21h5v-5"/></svg>
+          </button>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-5 gap-4 items-center">
+        <!-- Monospace Score Gauge -->
+        <div class="md:col-span-1 p-4 rounded-xl bg-zinc-950/80 border border-zinc-800 text-center flex flex-col items-center justify-center">
+          <div class="text-[10px] text-zinc-400 uppercase tracking-widest font-mono mb-0.5">Execution Index</div>
+          <div id="scorecard-gauge" class="text-3xl font-black text-zinc-100 font-mono tracking-tight">0.0<span class="text-sm font-normal text-zinc-500">/100</span></div>
+          <div class="text-[10px] text-zinc-500 font-mono mt-1">Volume × Integrity</div>
+        </div>
+
+        <!-- 4-Column Metric Matrix -->
+        <div class="md:col-span-4 grid grid-cols-2 sm:grid-cols-4 gap-3">
+          <div class="p-3 rounded-xl bg-zinc-950/60 border border-zinc-800">
+            <div class="text-lg font-black text-emerald-400 font-mono" id="scorecard-verified-min">0.0m</div>
+            <div class="text-xs text-zinc-400 mt-0.5">Verified Minutes</div>
+            <div class="text-[10px] text-zinc-500 font-mono">Passed sessions</div>
+          </div>
+          <div class="p-3 rounded-xl bg-zinc-950/60 border border-zinc-800">
+            <div class="text-lg font-black text-zinc-200 font-mono" id="scorecard-target-floor">180m</div>
+            <div class="text-xs text-zinc-400 mt-0.5">Target Floor</div>
+            <div class="text-[10px] text-zinc-500 font-mono">Daily target floor</div>
+          </div>
+          <div class="p-3 rounded-xl bg-zinc-950/60 border border-zinc-800">
+            <div class="text-lg font-black text-amber-400 font-mono" id="scorecard-distractions">0</div>
+            <div class="text-xs text-zinc-400 mt-0.5">Distraction Count</div>
+            <div class="text-[10px] text-zinc-500 font-mono">Total interruptions</div>
+          </div>
+          <div class="p-3 rounded-xl bg-zinc-950/60 border border-zinc-800">
+            <div class="text-lg font-black text-rose-400 font-mono" id="scorecard-paste-flags">0</div>
+            <div class="text-xs text-zinc-400 mt-0.5">Paste Flags</div>
+            <div class="text-[10px] text-zinc-500 font-mono">Clipboard breaches</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <!-- Bottleneck Culprit Callout Banner -->
     <div id="friction-culprit-banner" class="mb-5 p-3.5 rounded-xl border border-amber-500/30 bg-amber-500/10 text-amber-200 text-xs flex items-center gap-3">
       <span class="text-amber-400 flex items-center justify-center" id="culprit-icon"><svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg></span>
@@ -443,6 +563,56 @@
       <h3 class="text-xs font-bold text-zinc-300 uppercase tracking-wider mb-2">Category Resistance Breakdown</h3>
       <div class="grid grid-cols-1 md:grid-cols-3 gap-3" id="friction-category-cards">
         <p class="text-zinc-500 text-xs italic">Loading category analytics…</p>
+      </div>
+    </div>
+
+    <!-- ============================================================
+         CIRCADIAN RESISTANCE & EXCUSE HEATMAP (7x24 Punch-Card Matrix)
+    ============================================================ -->
+    <div class="mt-8 pt-6 border-t border-zinc-800">
+      <div class="flex items-center justify-between mb-3 flex-wrap gap-2">
+        <div>
+          <h3 class="text-xs font-bold uppercase tracking-wider text-zinc-200 flex items-center gap-2">
+            <svg class="w-4 h-4 text-zinc-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+            <span>Circadian Resistance & Excuse Heatmap</span>
+          </h3>
+          <p class="text-[11px] text-zinc-400">14-day telemetry matrix: Day of Week × Hour of Day friction density</p>
+        </div>
+        <div class="flex items-center gap-3 text-[11px] mono text-zinc-400">
+          <div class="flex items-center gap-1.5">
+            <span class="w-2.5 h-2.5 rounded-sm bg-zinc-900 border border-zinc-800"></span>
+            <span>Clean Focus (0.0)</span>
+          </div>
+          <div class="flex items-center gap-1.5">
+            <span class="w-2.5 h-2.5 rounded-sm bg-amber-600/60"></span>
+            <span>Moderate Friction</span>
+          </div>
+          <div class="flex items-center gap-1.5">
+            <span class="w-2.5 h-2.5 rounded-sm bg-rose-600/80"></span>
+            <span>Severe Friction (1.0)</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- 7x24 Punch Card Grid -->
+      <div class="overflow-x-auto pb-2">
+        <div class="min-w-[700px]">
+          <!-- Hours Header (00..23) -->
+          <div class="grid grid-cols-[54px_repeat(24,_1fr)] gap-1 text-[10px] text-zinc-500 mono mb-1 text-center">
+            <div class="text-left pl-1">DAY</div>
+            <div>00</div><div>01</div><div>02</div><div>03</div><div>04</div><div>05</div>
+            <div>06</div><div>07</div><div>08</div><div>09</div><div>10</div><div>11</div>
+            <div>12</div><div>13</div><div>14</div><div>15</div><div>16</div><div>17</div>
+            <div>18</div><div>19</div><div>20</div><div>21</div><div>22</div><div>23</div>
+          </div>
+          <!-- 7 Rows rendered via JavaScript -->
+          <div id="circadian-heatmap-rows" class="space-y-1">
+            <p class="text-xs text-zinc-500 italic p-3">Loading circadian resistance matrix…</p>
+          </div>
+        </div>
+      </div>
+      <div id="circadian-slot-tooltip" class="mt-2 text-[11px] mono text-zinc-400 h-4 truncate">
+        Hover or tap any bucket to view friction telemetry.
       </div>
     </div>
 
@@ -529,10 +699,24 @@
       <div id="viva-step-3" class="hidden">
         <h3 class="text-lg font-bold mb-3" id="viva-verdict-title"></h3>
         <div id="viva-verdict-box" class="px-5 py-4 rounded-xl border text-sm leading-relaxed mb-4 mono whitespace-pre-wrap"></div>
-        <button onclick="closeModal('modal-viva'); loadStats(); loadFrictionReport();"
+        <button onclick="closeModal('modal-viva'); loadStats(); loadFrictionReport(); loadStreakBadge();"
           class="w-full bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-100 rounded-lg py-2.5 text-sm font-bold transition active:scale-95">
           Done
         </button>
+      </div>
+
+      <!-- Parked Thoughts Review Drawer for Break Processing -->
+      <div id="viva-parked-thoughts-container" class="mt-4 pt-3 border-t border-zinc-800 hidden">
+        <div class="flex items-center justify-between mb-2">
+          <h4 class="text-xs font-bold uppercase tracking-wider text-zinc-300 flex items-center gap-1.5">
+            <svg class="w-3.5 h-3.5 text-amber-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+            <span>Parked Thoughts (To Process During Break)</span>
+          </h4>
+          <span id="viva-parked-count" class="text-[10px] mono px-2 py-0.5 rounded bg-zinc-900 text-zinc-400 border border-zinc-800">0 items</span>
+        </div>
+        <div id="viva-parked-thoughts-list" class="space-y-1.5 max-h-36 overflow-y-auto pr-1 text-xs text-zinc-300">
+          <p class="text-zinc-500 italic">No parked thoughts recorded for this block.</p>
+        </div>
       </div>
     </div>
   </div>
@@ -782,14 +966,17 @@
   <!-- ============================================================
        SETTINGS DRAWER (Dynamic Study Tracks & Environment)
   ============================================================ -->
+  <!-- ============================================================
+       SETTINGS DRAWER (Complete 5-Section System)
+  ============================================================ -->
   <div id="drawer-settings" class="hidden fixed inset-0 z-50 overflow-hidden">
     <!-- Backdrop -->
     <div onclick="closeSettingsDrawer()" class="fixed inset-0 bg-black/80 backdrop-blur-sm transition-opacity"></div>
     
-    <div class="fixed inset-y-0 right-0 max-w-full flex pl-10">
-      <div class="w-screen max-w-md bg-zinc-950 border-l border-zinc-800 p-6 flex flex-col shadow-2xl overflow-y-auto">
+    <div class="fixed inset-y-0 right-0 max-w-full flex pl-6 sm:pl-10">
+      <div class="w-screen max-w-xl bg-zinc-950 border-l border-zinc-800 p-6 flex flex-col shadow-2xl overflow-y-auto">
         <!-- Header -->
-        <div class="flex items-center justify-between pb-4 border-b border-zinc-800">
+        <div class="flex items-center justify-between pb-4 border-b border-zinc-800 sticky top-0 bg-zinc-950/95 backdrop-blur z-10 -mt-2 pt-2">
           <div class="flex items-center gap-2.5">
             <div class="w-8 h-8 rounded-lg bg-zinc-900 border border-zinc-700 flex items-center justify-center text-zinc-100">
               <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
@@ -798,110 +985,348 @@
               </svg>
             </div>
             <div>
-              <h2 class="text-base font-bold text-zinc-100">Engine Settings</h2>
-              <p class="text-xs text-zinc-400">Dynamic study tracks & boundaries</p>
+              <h2 class="text-base font-bold text-zinc-100">Settings & Telemetry</h2>
+              <p class="text-xs text-zinc-400">Custom tracks, hardware endpoints & execution rules</p>
             </div>
           </div>
-          <button onclick="closeSettingsDrawer()" class="text-zinc-400 hover:text-white p-1 rounded-lg hover:bg-zinc-900">
-            <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-          </button>
+          <div class="flex items-center gap-2">
+            <button id="btn-save-settings" onclick="saveAllSettings()"
+              class="px-3.5 py-1.5 rounded-lg bg-zinc-100 hover:bg-white text-zinc-950 text-xs font-bold transition active:scale-95 shadow-sm flex items-center gap-1.5">
+              <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+              <span>Save</span>
+            </button>
+            <button id="btn-close-settings" onclick="closeSettingsDrawer()" class="text-zinc-400 hover:text-white p-1 rounded-lg hover:bg-zinc-900">
+              <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+          </div>
         </div>
 
         <div class="space-y-6 pt-5 flex-1">
-          <!-- Section 1: Study Tracks -->
-          <div>
-            <div class="flex items-center justify-between mb-3">
-              <h3 class="text-xs font-bold uppercase tracking-wider text-zinc-300">Configured Study Tracks</h3>
-              <span id="settings-track-count" class="text-[11px] mono px-2 py-0.5 rounded bg-zinc-900 text-zinc-400 border border-zinc-800">0 tracks</span>
-            </div>
-            <div id="settings-track-list" class="space-y-2 mb-4">
-              <p class="text-xs text-zinc-500 italic">Loading track definitions…</p>
+          <!-- ==========================================
+               SECTION 1: Study Tracks & Verification
+          =========================================== -->
+          <div class="p-4 rounded-xl bg-zinc-900/60 border border-zinc-800 space-y-3.5">
+            <div class="flex items-center justify-between">
+              <h3 class="text-xs font-bold uppercase tracking-wider text-zinc-300 flex items-center gap-2">
+                <svg class="w-3.5 h-3.5 text-zinc-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg>
+                1. Study Tracks & Verification
+              </h3>
+              <span id="settings-track-count" class="text-[10px] mono px-2 py-0.5 rounded bg-zinc-900 text-zinc-400 border border-zinc-800">0 tracks</span>
             </div>
 
-            <!-- Add Track Sub-form -->
-            <div class="p-4 rounded-xl bg-zinc-900/60 border border-zinc-800 space-y-3">
-              <h4 class="text-xs font-bold text-zinc-200">Add / Customize Track</h4>
-              <div class="space-y-2.5 text-xs">
-                <div>
-                  <label class="text-zinc-400 block mb-1">Track Identifier (slug)</label>
-                  <input id="set-track-id" type="text" placeholder="e.g. writing, design, math, research"
-                    class="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-zinc-200 placeholder-zinc-600 focus:outline-none focus:border-zinc-400 mono" />
-                </div>
-                <div>
-                  <label class="text-zinc-400 block mb-1">Display Label</label>
-                  <input id="set-track-label" type="text" placeholder="e.g. Technical Writing"
-                    class="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-zinc-200 placeholder-zinc-600 focus:outline-none focus:border-zinc-400" />
+            <!-- Dynamic Tracks List -->
+            <div>
+              <label class="text-[11px] text-zinc-400 block mb-1.5 font-semibold">Active Study Tracks</label>
+              <div id="settings-track-list" class="space-y-2 mb-3">
+                <p class="text-xs text-zinc-500 italic">Loading track definitions…</p>
+              </div>
+            </div>
+
+            <!-- Add/Edit Track Sub-form -->
+            <details class="text-xs text-zinc-300 pt-1 border-t border-zinc-800/80">
+              <summary class="cursor-pointer font-semibold text-zinc-300 hover:text-zinc-100 py-1 flex items-center justify-between">
+                <span>+ Add / Modify Track Definition</span>
+                <span class="text-[10px] text-zinc-500 font-mono">Toggle</span>
+              </summary>
+              <div class="space-y-2.5 pt-2 text-xs">
+                <div class="grid grid-cols-2 gap-2">
+                  <div>
+                    <label class="text-[11px] text-zinc-400 block mb-1">Track ID (slug)</label>
+                    <input id="set-track-id" type="text" placeholder="writing, math, design"
+                      class="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-2.5 py-1.5 text-zinc-200 placeholder-zinc-600 focus:outline-none focus:border-zinc-400 mono" />
+                  </div>
+                  <div>
+                    <label class="text-[11px] text-zinc-400 block mb-1">Display Label</label>
+                    <input id="set-track-label" type="text" placeholder="Technical Writing"
+                      class="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-2.5 py-1.5 text-zinc-200 placeholder-zinc-600 focus:outline-none focus:border-zinc-400" />
+                  </div>
                 </div>
                 <div class="grid grid-cols-2 gap-2">
                   <div>
-                    <label class="text-zinc-400 block mb-1">Default Duration (min)</label>
+                    <label class="text-[11px] text-zinc-400 block mb-1">Duration (min)</label>
                     <input id="set-track-duration" type="number" value="45" min="5"
-                      class="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-zinc-200 focus:outline-none focus:border-zinc-400 mono" />
+                      class="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-2.5 py-1.5 text-zinc-200 focus:outline-none focus:border-zinc-400 mono" />
                   </div>
                   <div>
-                    <label class="text-zinc-400 block mb-1">Friction Floor (F)</label>
-                    <input id="set-track-friction" type="number" value="65" min="0" max="100"
-                      class="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-zinc-200 focus:outline-none focus:border-zinc-400 mono" />
+                    <label class="text-[11px] text-zinc-400 block mb-1">Friction Floor (F)</label>
+                    <input id="set-track-friction" type="number" value="3" min="0" max="100"
+                      class="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-2.5 py-1.5 text-zinc-200 focus:outline-none focus:border-zinc-400 mono" />
                   </div>
                 </div>
                 <div>
-                  <label class="text-zinc-400 block mb-1">Watchdog Mode</label>
-                  <select id="set-track-watchdog" class="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-zinc-200 focus:outline-none focus:border-zinc-400">
-                    <option value="false">Conceptual Notes / Viva Defense (Non-code)</option>
-                    <option value="true">Code Watchdog (VS Code paste detection)</option>
+                  <label class="text-[11px] text-zinc-400 block mb-1">Code Watchdog Required</label>
+                  <select id="set-track-watchdog" class="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-2.5 py-1.5 text-zinc-200 focus:outline-none focus:border-zinc-400">
+                    <option value="false">False (Viva defense / conceptual notes)</option>
+                    <option value="true">True (Code inspection / paste watchdog)</option>
                   </select>
                 </div>
                 <div>
-                  <label class="text-zinc-400 block mb-1">Custom Viva Evaluation Criteria</label>
-                  <textarea id="set-track-prompt" rows="2" placeholder="e.g. Verify logical synthesis, conceptual accuracy, and precision of deductions."
-                    class="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-zinc-200 placeholder-zinc-600 focus:outline-none focus:border-zinc-400 resize-none"></textarea>
+                  <label class="text-[11px] text-zinc-400 block mb-1">Custom Viva Criteria Prompt</label>
+                  <textarea id="set-track-prompt" rows="2" placeholder="Evaluate technical precision and conceptual logic..."
+                    class="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-2.5 py-1.5 text-zinc-200 placeholder-zinc-600 focus:outline-none focus:border-zinc-400 resize-none"></textarea>
                 </div>
                 <button type="button" onclick="saveCustomTrack()" id="btn-save-track"
-                  class="w-full mt-2 bg-zinc-100 hover:bg-white text-zinc-950 font-bold rounded-lg py-2.5 text-xs transition active:scale-95 shadow-sm">
-                  Add / Update Track
+                  class="w-full bg-zinc-800 hover:bg-zinc-700 text-zinc-100 font-semibold rounded-lg py-2 text-xs transition active:scale-95 border border-zinc-700">
+                  Save Track
                 </button>
               </div>
+            </details>
+
+            <!-- Verification & Workspace Fields -->
+            <div class="space-y-3 pt-2 border-t border-zinc-800/80 text-xs">
+              <div>
+                <label class="text-[11px] text-zinc-400 block mb-1 font-semibold">Local Workspace Path</label>
+                <input id="setting-workspace-path" type="text" placeholder="D:\code\workspace"
+                  class="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-zinc-200 placeholder-zinc-600 focus:outline-none focus:border-zinc-400 mono" />
+                <p class="text-[10px] text-zinc-500 mt-0.5">Directory inspected for local Git and modified code proof during viva defense.</p>
+              </div>
+
+              <div class="grid grid-cols-2 gap-2">
+                <div>
+                  <label class="text-[11px] text-zinc-400 block mb-1 font-semibold">Viva Strictness</label>
+                  <select id="setting-viva-strictness" class="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-2.5 py-2 text-zinc-200 focus:outline-none focus:border-zinc-400">
+                    <option value="lenient">Lenient</option>
+                    <option value="standard" selected>Standard</option>
+                    <option value="adversarial">Adversarial</option>
+                  </select>
+                </div>
+                <div class="flex flex-col justify-end">
+                  <label class="flex items-center gap-2 cursor-pointer p-2 rounded-lg bg-zinc-900 border border-zinc-800 hover:border-zinc-700">
+                    <input id="setting-auto-fail-paste" type="checkbox" checked class="rounded border-zinc-700 bg-zinc-950 text-emerald-500 focus:ring-0" />
+                    <span class="text-[11px] text-zinc-300">Auto-fail Paste Bursts</span>
+                  </label>
+                </div>
+              </div>
             </div>
           </div>
 
-          <!-- Section 2: Boundaries & Webhooks -->
-          <div class="p-4 rounded-xl bg-zinc-900/60 border border-zinc-800 space-y-3">
-            <h3 class="text-xs font-bold uppercase tracking-wider text-zinc-300">Environmental & Webhook Limits</h3>
-            <div class="space-y-2.5 text-xs">
+          <!-- ==========================================
+               SECTION 2: Hardware & Connectivity
+          =========================================== -->
+          <div class="p-4 rounded-xl bg-zinc-900/60 border border-zinc-800 space-y-3.5">
+            <h3 class="text-xs font-bold uppercase tracking-wider text-zinc-300 flex items-center gap-2">
+              <svg class="w-3.5 h-3.5 text-zinc-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="2" width="14" height="20" rx="2" ry="2"/><line x1="12" y1="18" x2="12.01" y2="18"/></svg>
+              2. Hardware & Connectivity
+            </h3>
+
+            <!-- Dual Endpoints Display with 1-Click Copy -->
+            <div class="space-y-2 text-xs">
               <div>
-                <label class="text-zinc-400 block mb-1">Peripheral Physical Boundary (meters)</label>
-                <input id="set-boundary-meters" type="number" value="3" min="1" max="50"
-                  class="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-zinc-200 focus:outline-none focus:border-zinc-400 mono" />
+                <label class="text-[11px] text-zinc-400 block mb-1">Local LAN Endpoint (Samsung F14 Wi-Fi)</label>
+                <div class="flex gap-2">
+                  <input id="endpoint-lan-url" type="text" readonly value="http://127.0.0.1:8000"
+                    class="flex-1 bg-zinc-950 border border-zinc-700 rounded-lg px-3 py-1.5 text-zinc-200 mono text-xs select-all focus:outline-none" />
+                  <button id="btn-copy-lan" onclick="copyEndpointUrl('endpoint-lan-url')"
+                    class="px-2.5 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-200 border border-zinc-700 font-semibold text-xs flex items-center gap-1">
+                    Copy
+                  </button>
+                </div>
+              </div>
+
+              <div>
+                <label class="text-[11px] text-zinc-400 block mb-1">Live Cloudflare Tunnel (Remote Cellular)</label>
+                <div class="flex gap-2">
+                  <input id="endpoint-tunnel-url" type="text" readonly value="Detecting live tunnel..."
+                    class="flex-1 bg-zinc-950 border border-zinc-700 rounded-lg px-3 py-1.5 text-zinc-200 mono text-xs select-all focus:outline-none" />
+                  <button id="btn-copy-tunnel" onclick="copyEndpointUrl('endpoint-tunnel-url')"
+                    class="px-2.5 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-200 border border-zinc-700 font-semibold text-xs flex items-center gap-1">
+                    Copy
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <!-- Ntfy Topic & Test Ping -->
+            <div class="space-y-2 text-xs pt-2 border-t border-zinc-800/80">
+              <div>
+                <label class="text-[11px] text-zinc-400 block mb-1 font-semibold">ntfy.sh Webhook Topic</label>
+                <div class="flex gap-2">
+                  <input id="setting-ntfy-topic" type="text" placeholder="focus_engine_ntfy"
+                    class="flex-1 bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-zinc-200 placeholder-zinc-600 focus:outline-none focus:border-zinc-400 mono" />
+                  <button id="btn-test-ping" onclick="testPingNotification()"
+                    class="px-3 py-2 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-100 border border-zinc-700 font-semibold text-xs transition active:scale-95 flex items-center gap-1.5"
+                    title="Send priority webhook ping to phone">
+                    <svg class="w-3.5 h-3.5 text-amber-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+                    <span>Test Ping</span>
+                  </button>
+                </div>
+                <p id="ping-feedback-msg" class="text-[10px] text-zinc-500 mt-1 hidden"></p>
+              </div>
+
+              <div class="grid grid-cols-2 gap-2 pt-1">
+                <label class="flex items-center gap-2 cursor-pointer p-2 rounded-lg bg-zinc-900 border border-zinc-800 hover:border-zinc-700">
+                  <input id="setting-auto-clear-dnd" type="checkbox" checked class="rounded border-zinc-700 bg-zinc-950 text-emerald-500 focus:ring-0" />
+                  <span class="text-[11px] text-zinc-300">Auto-clear Samsung DND</span>
+                </label>
+                <label class="flex items-center gap-2 cursor-pointer p-2 rounded-lg bg-zinc-900 border border-zinc-800 hover:border-zinc-700">
+                  <input id="setting-peripheral-enforced" type="checkbox" checked class="rounded border-zinc-700 bg-zinc-950 text-emerald-500 focus:ring-0" />
+                  <span class="text-[11px] text-zinc-300">&gt;3m Phone Boundary</span>
+                </label>
+              </div>
+            </div>
+          </div>
+
+          <!-- ==========================================
+               SECTION 3: Session Mechanics
+          =========================================== -->
+          <div class="p-4 rounded-xl bg-zinc-900/60 border border-zinc-800 space-y-3.5">
+            <h3 class="text-xs font-bold uppercase tracking-wider text-zinc-300 flex items-center gap-2">
+              <svg class="w-3.5 h-3.5 text-zinc-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+              3. Session Mechanics
+            </h3>
+
+            <div class="grid grid-cols-3 gap-2 text-xs">
+              <div>
+                <label class="text-[11px] text-zinc-400 block mb-1">Default Min (m)</label>
+                <input id="setting-default-min" type="number" value="25" min="1" max="180"
+                  class="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-2.5 py-1.5 text-zinc-200 focus:outline-none focus:border-zinc-400 mono" />
               </div>
               <div>
-                <label class="text-zinc-400 block mb-1">ntfy Webhook Topic</label>
-                <input id="set-ntfy-topic" type="text" placeholder="focus_tanishq_engine"
-                  class="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-zinc-200 placeholder-zinc-600 focus:outline-none focus:border-zinc-400 mono" />
+                <label class="text-[11px] text-zinc-400 block mb-1">Target (m)</label>
+                <input id="setting-default-target" type="number" value="60" min="5" max="360"
+                  class="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-2.5 py-1.5 text-zinc-200 focus:outline-none focus:border-zinc-400 mono" />
               </div>
-              <button type="button" onclick="saveEnvironmentalSettings()" id="btn-save-env"
-                class="w-full mt-1 bg-zinc-800 hover:bg-zinc-700 text-zinc-100 border border-zinc-700 font-semibold rounded-lg py-2 text-xs transition active:scale-95">
-                Save Environment Settings
+              <div>
+                <label class="text-[11px] text-zinc-400 block mb-1">Stretch (m)</label>
+                <input id="setting-default-stretch" type="number" value="90" min="10" max="480"
+                  class="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-2.5 py-1.5 text-zinc-200 focus:outline-none focus:border-zinc-400 mono" />
+              </div>
+            </div>
+
+            <div class="space-y-2 text-xs pt-1">
+              <label class="flex items-center justify-between p-2.5 rounded-lg bg-zinc-900 border border-zinc-800 hover:border-zinc-700 cursor-pointer">
+                <div>
+                  <div class="font-semibold text-zinc-200 text-xs">5-Min Micro-Start Warm-up Gate</div>
+                  <div class="text-[10px] text-zinc-400">Forces dirty initiation on high-resistance tasks</div>
+                </div>
+                <input id="setting-micro-start" type="checkbox" checked class="rounded border-zinc-700 bg-zinc-950 text-emerald-500 focus:ring-0" />
+              </label>
+
+              <label class="flex items-center justify-between p-2.5 rounded-lg bg-zinc-900 border border-zinc-800 hover:border-zinc-700 cursor-pointer">
+                <div>
+                  <div class="font-semibold text-zinc-200 text-xs">Early Exit Streak Penalty</div>
+                  <div class="text-[10px] text-zinc-400">Strictly breaks streak if aborted under 10-minute floor</div>
+                </div>
+                <input id="setting-penalty-streak" type="checkbox" checked class="rounded border-zinc-700 bg-zinc-950 text-rose-500 focus:ring-0" />
+              </label>
+
+              <div class="p-2.5 rounded-lg bg-zinc-900 border border-zinc-800 flex items-center justify-between">
+                <div>
+                  <div class="font-semibold text-zinc-200 text-xs">Zen Hold-to-Exit Time</div>
+                  <div class="text-[10px] text-zinc-400">Seconds to hold emergency exit button</div>
+                </div>
+                <div class="flex items-center gap-1.5">
+                  <input id="setting-bail-hold" type="number" value="3" min="1" max="15"
+                    class="w-16 bg-zinc-950 border border-zinc-700 rounded px-2 py-1 text-center mono text-zinc-200 text-xs focus:outline-none" />
+                  <span class="text-zinc-500 text-xs font-mono">sec</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- ==========================================
+               SECTION 4: HUD & Audio
+          =========================================== -->
+          <div class="p-4 rounded-xl bg-zinc-900/60 border border-zinc-800 space-y-3.5">
+            <h3 class="text-xs font-bold uppercase tracking-wider text-zinc-300 flex items-center gap-2">
+              <svg class="w-3.5 h-3.5 text-zinc-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/></svg>
+              4. HUD & Audio
+            </h3>
+
+            <div class="grid grid-cols-2 gap-2 text-xs">
+              <div>
+                <label class="text-[11px] text-zinc-400 block mb-1">Default Soundscape</label>
+                <select id="setting-soundscape" class="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-2.5 py-1.5 text-zinc-200 focus:outline-none focus:border-zinc-400">
+                  <option value="off" selected>Off</option>
+                  <option value="brown_noise">Brown Noise</option>
+                  <option value="binaural_40hz">Binaural 40Hz (Gamma)</option>
+                  <option value="rain">Rainfall</option>
+                </select>
+              </div>
+              <div>
+                <label class="text-[11px] text-zinc-400 block mb-1">Ambient Volume</label>
+                <div class="flex items-center gap-2 pt-1">
+                  <input id="setting-volume" type="range" min="0" max="100" value="70"
+                    class="w-full h-1.5 bg-zinc-800 rounded accent-zinc-200 cursor-pointer" />
+                  <span id="setting-volume-label" class="text-[11px] mono text-zinc-400 w-8 text-right">70%</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="space-y-2 text-xs pt-1">
+              <label class="flex items-center justify-between p-2.5 rounded-lg bg-zinc-900 border border-zinc-800 hover:border-zinc-700 cursor-pointer">
+                <div>
+                  <div class="font-semibold text-zinc-200 text-xs">Auto-Zen Fullscreen Kiosk Mode</div>
+                  <div class="text-[10px] text-zinc-400">Enters fullscreen on every session start</div>
+                </div>
+                <input id="setting-auto-zen" type="checkbox" class="rounded border-zinc-700 bg-zinc-950 text-emerald-500 focus:ring-0" />
+              </label>
+
+              <label class="flex items-center justify-between p-2.5 rounded-lg bg-zinc-900 border border-zinc-800 hover:border-zinc-700 cursor-pointer">
+                <div>
+                  <div class="font-semibold text-zinc-200 text-xs">Blind Focus Mode</div>
+                  <div class="text-[10px] text-zinc-400">Masks countdown numbers (••:••) to eliminate clock-watching</div>
+                </div>
+                <input id="setting-blind-focus" type="checkbox" class="rounded border-zinc-700 bg-zinc-950 text-emerald-500 focus:ring-0" />
+              </label>
+
+              <div class="p-2.5 rounded-lg bg-zinc-900 border border-zinc-800 flex items-center justify-between">
+                <div>
+                  <div class="font-semibold text-zinc-200 text-xs">Daily Scorecard Floor (DEI Target)</div>
+                  <div class="text-[10px] text-zinc-400">Target verified minutes per day for 100% DEI</div>
+                </div>
+                <div class="flex items-center gap-1.5">
+                  <input id="setting-daily-target-min" type="number" value="180" min="30" max="720"
+                    class="w-20 bg-zinc-950 border border-zinc-700 rounded px-2 py-1 text-center mono text-zinc-200 text-xs focus:outline-none" />
+                  <span class="text-zinc-500 text-xs font-mono">min</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- ==========================================
+               SECTION 5: Account & Data Governance
+          =========================================== -->
+          <div class="p-4 rounded-xl bg-zinc-900/60 border border-zinc-800 space-y-3.5">
+            <h3 class="text-xs font-bold uppercase tracking-wider text-zinc-300 flex items-center gap-2">
+              <svg class="w-3.5 h-3.5 text-zinc-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+              5. Account & Data Governance
+            </h3>
+
+            <!-- User ID and Email Badge -->
+            <div class="p-3 rounded-lg bg-zinc-950 border border-zinc-800 space-y-1 text-xs">
+              <div class="flex items-center justify-between">
+                <span class="text-zinc-400 text-[11px]">Authenticated Email:</span>
+                <span id="setting-user-email" class="mono font-bold text-zinc-200">dev-user@local</span>
+              </div>
+              <div class="flex items-center justify-between">
+                <span class="text-zinc-400 text-[11px]">User UUID:</span>
+                <span id="setting-user-id" class="mono text-[10px] text-zinc-500 truncate max-w-[200px]">dev-user</span>
+              </div>
+            </div>
+
+            <!-- Actions -->
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-2 pt-1 text-xs">
+              <button id="btn-export-telemetry" onclick="exportTelemetryData()"
+                class="px-3 py-2 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-200 border border-zinc-700 font-semibold transition active:scale-95 flex items-center justify-center gap-1.5"
+                title="Download complete JSON archive of sessions, vivas & excuses">
+                <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                <span>Export JSON</span>
+              </button>
+
+              <button id="btn-purge-cache" onclick="purgeStaleCache()"
+                class="px-3 py-2 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-300 border border-zinc-700 font-semibold transition active:scale-95 flex items-center justify-center gap-1.5"
+                title="Flush PWA cache and reload">
+                <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="1 4 1 10 7 10"/><polyline points="23 20 23 14 17 14"/><path d="M20.49 9A9 9 0 0 0 5.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 0 1 3.51 15"/></svg>
+                <span>Purge Cache</span>
+              </button>
+
+              <button id="btn-sign-out" onclick="signOutAccount()"
+                class="px-3 py-2 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/30 font-semibold transition active:scale-95 flex items-center justify-center gap-1.5">
+                <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+                <span>Sign Out</span>
               </button>
             </div>
-          </div>
-
-          <!-- Section 3: Mobile Network Direct Connect -->
-          <div class="p-4 rounded-xl bg-zinc-900/60 border border-zinc-800 space-y-3">
-            <div class="flex items-center justify-between">
-              <h3 class="text-xs font-bold uppercase tracking-wider text-zinc-300">Mobile Wi-Fi Direct Connect</h3>
-              <span id="settings-network-mode" class="text-[10px] mono px-2 py-0.5 rounded bg-zinc-800 text-zinc-300 border border-zinc-700">Detecting...</span>
-            </div>
-            <p class="text-xs text-zinc-400 leading-relaxed">
-              Connect your Samsung F14 over zero-latency local Wi-Fi or remote Cloudflare Edge tunnel.
-            </p>
-            <button type="button" onclick="openMobileConnectModal()" id="btn-open-mobile-connect"
-              class="w-full bg-zinc-800 hover:bg-zinc-700 text-zinc-100 border border-zinc-700 font-semibold rounded-lg py-2.5 text-xs transition active:scale-95 flex items-center justify-center gap-2">
-              <svg class="w-4 h-4 text-zinc-200" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <rect x="5" y="2" width="14" height="20" rx="2" ry="2"/>
-                <line x1="12" y1="18" x2="12.01" y2="18"/>
-              </svg>
-              Show Mobile Connect URLs
-            </button>
           </div>
         </div>
       </div>
@@ -971,6 +1396,259 @@
     </form>
   </div>
 
+  <!-- Parked Thoughts Scratchpad Modal -->
+  <div id="modal-parked-thoughts" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4" style="background:rgba(0,0,0,0.85);backdrop-filter:blur(8px)">
+    <div class="modal-enter glass rounded-2xl w-full max-w-md p-6 space-y-4 border border-zinc-700">
+      <div class="flex items-center justify-between pb-3 border-b border-zinc-800">
+        <div class="flex items-center gap-2">
+          <div class="w-7 h-7 rounded-lg bg-zinc-800 border border-zinc-700 flex items-center justify-center text-zinc-200">
+            <svg class="w-4 h-4 text-amber-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+          </div>
+          <div>
+            <h3 class="text-sm font-bold text-zinc-100">Park Fleeting Thought</h3>
+            <p class="text-[11px] text-zinc-400 mono">Shortcut: Alt+D | Enter to submit</p>
+          </div>
+        </div>
+        <button onclick="closeModal('modal-parked-thoughts')" class="text-zinc-400 hover:text-white p-1 rounded hover:bg-zinc-800">
+          <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+
+      <form onsubmit="handleParkThoughtSubmit(event)" class="space-y-3">
+        <div>
+          <label class="text-[11px] text-zinc-400 block mb-1">What just popped into your head? (Single line)</label>
+          <input id="parked-thought-input" type="text" placeholder="e.g. Check assignment submission date…" required autofocus
+            class="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2.5 text-sm text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-amber-400 focus:ring-1 focus:ring-amber-400 transition" />
+        </div>
+
+        <div class="flex items-center justify-between pt-1">
+          <div class="flex items-center gap-2 text-xs">
+            <span class="text-zinc-400">Urgency:</span>
+            <select id="parked-thought-urgency" class="bg-zinc-900 border border-zinc-700 rounded px-2 py-1 text-xs text-zinc-200 focus:outline-none focus:border-zinc-500">
+              <option value="low" selected>Low</option>
+              <option value="medium">Medium</option>
+              <option value="high">High</option>
+            </select>
+          </div>
+          <button type="submit" id="btn-submit-park-thought"
+            class="bg-zinc-100 hover:bg-white text-zinc-950 font-bold px-4 py-2 rounded-lg text-xs transition active:scale-95 shadow-sm flex items-center gap-1.5">
+            <span>Park & Refocus</span>
+            <span class="text-[10px] mono text-zinc-600">↵</span>
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Fullscreen Zen Kiosk Mode Overlay -->
+  <div id="zen-kiosk-view" class="hidden fixed inset-0 z-50 bg-black text-zinc-100 flex flex-col justify-between p-6 sm:p-10 select-none">
+    <!-- Top Bar: Task & Soundscape Status -->
+    <div class="flex items-center justify-between border-b border-zinc-900 pb-4">
+      <div class="flex items-center gap-3">
+        <span class="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse"></span>
+        <h2 id="zen-task-title" class="text-base sm:text-lg font-mono font-bold tracking-wide text-zinc-200 uppercase truncate max-w-md">Deep Focus Mode</h2>
+      </div>
+      <div class="flex items-center gap-3 text-xs mono text-zinc-400">
+        <span id="zen-audio-label" class="hidden sm:inline">Ambient: Off</span>
+        <button onclick="toggleAudioMute()" class="px-2.5 py-1 rounded bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-300 hover:text-white transition">Mute</button>
+        <button onclick="openParkedThoughtModal()" class="px-3 py-1 rounded bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-amber-300 flex items-center gap-1.5 transition" title="Shortcut: Alt+D">
+          <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+          <span>Park (Alt+D)</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- Center: Monospace Giant Countdown Timer + Milestone Goals -->
+    <div class="flex flex-col items-center justify-center my-auto text-center space-y-6">
+      <div id="zen-timer-display" class="font-mono text-7xl sm:text-8xl md:text-9xl font-black tracking-widest text-zinc-100 tabular-nums">
+        00:00:00
+      </div>
+      <div id="zen-milestone-banner" class="flex items-center justify-center gap-4 text-xs sm:text-sm font-mono px-6 py-2 rounded-xl bg-zinc-950 border border-zinc-900">
+        <span id="zen-min-goal" class="text-amber-400">Min: 25m</span>
+        <span class="text-zinc-700">|</span>
+        <span id="zen-target-goal" class="text-zinc-200 font-semibold">Target: 50m</span>
+        <span class="text-zinc-700">|</span>
+        <span id="zen-stretch-goal" class="text-emerald-400 font-semibold">Stretch: 90m</span>
+      </div>
+      <div class="w-full max-w-md h-1.5 bg-zinc-900 rounded-full overflow-hidden">
+        <div id="zen-progress-bar" class="h-full bg-zinc-400 transition-all duration-500" style="width: 0%"></div>
+      </div>
+    </div>
+
+    <!-- Bottom Bar: Guarded Emergency Exit -->
+    <div class="flex flex-col sm:flex-row items-center justify-between pt-4 border-t border-zinc-900 gap-4 text-xs font-mono">
+      <div class="text-zinc-500">
+        Press <kbd class="px-1.5 py-0.5 rounded bg-zinc-900 text-zinc-300 border border-zinc-800">F</kbd> to toggle Zen Mode. Exit before 10m minimum floor breaks streak.
+      </div>
+      <div>
+        <button id="zen-exit-btn"
+          class="relative overflow-hidden px-6 py-3 rounded-xl bg-zinc-900 hover:bg-zinc-850 text-rose-400 border border-zinc-800 font-bold tracking-wide transition active:scale-95 flex items-center gap-2 select-none">
+          <svg class="w-4 h-4 text-rose-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><line x1="9" y1="9" x2="15" y2="15"/><line x1="15" y1="9" x2="9" y2="15"/></svg>
+          <span id="zen-exit-label">Hold to Exit (3s)</span>
+          <!-- Guarded hold progress bar overlay -->
+          <span id="zen-exit-fill" class="absolute inset-0 bg-rose-500/30 w-0 transition-all pointer-events-none"></span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============================================================
+       MOBILE BOTTOM NAVIGATION DOCK (Viewport < 768px)
+  ============================================================ -->
+  <nav id="mobile-bottom-dock" aria-label="Mobile Navigation Dock"
+    class="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-zinc-950/92 backdrop-blur-2xl border-t border-zinc-800/80 px-2 py-1.5 flex items-center justify-around select-none shadow-[0_-8px_30px_rgba(0,0,0,0.7)]"
+    style="padding-bottom: max(0.5rem, env(safe-area-inset-bottom))">
+    
+    <!-- 1. HUD / Timer -->
+    <button id="dock-btn-hud" onclick="mobileNavTo('hud')" aria-label="Scroll to HUD Timer"
+      class="dock-nav-item flex-1 flex flex-col items-center justify-center py-1 text-zinc-100 transition active:scale-95 focus:outline-none">
+      <svg class="w-5 h-5 mb-0.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
+      </svg>
+      <span class="text-[10px] font-mono tracking-wider font-semibold">HUD</span>
+    </button>
+
+    <!-- 2. Tasks -->
+    <button id="dock-btn-tasks" onclick="mobileNavTo('tasks')" aria-label="Scroll to Tasks"
+      class="dock-nav-item flex-1 flex flex-col items-center justify-center py-1 text-zinc-400 hover:text-zinc-200 transition active:scale-95 focus:outline-none">
+      <svg class="w-5 h-5 mb-0.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><rect x="8" y="2" width="8" height="4" rx="1" ry="1"/>
+      </svg>
+      <span class="text-[10px] font-mono tracking-wider font-medium">TASKS</span>
+    </button>
+
+    <!-- 3. Center Tactical Action Button (FAB) -->
+    <div class="relative px-2">
+      <button id="dock-btn-fab" onclick="toggleMobileActionSheet()" aria-label="Open Tactical Quick Actions"
+        class="w-12 h-12 -mt-5 rounded-full bg-zinc-100 text-zinc-950 flex items-center justify-center shadow-xl border-2 border-zinc-900 active:scale-90 transition transform">
+        <svg class="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
+        </svg>
+      </button>
+    </div>
+
+    <!-- 4. Metrics / Analytics -->
+    <button id="dock-btn-analytics" onclick="mobileNavTo('analytics')" aria-label="Scroll to Analytics"
+      class="dock-nav-item flex-1 flex flex-col items-center justify-center py-1 text-zinc-400 hover:text-zinc-200 transition active:scale-95 focus:outline-none">
+      <svg class="w-5 h-5 mb-0.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M18 20V10"/><path d="M12 20V4"/><path d="M6 20v-6"/>
+      </svg>
+      <span class="text-[10px] font-mono tracking-wider font-medium">METRICS</span>
+    </button>
+
+    <!-- 5. Settings / More -->
+    <button id="dock-btn-settings" onclick="mobileNavTo('settings')" aria-label="Open Settings Drawer"
+      class="dock-nav-item flex-1 flex flex-col items-center justify-center py-1 text-zinc-400 hover:text-zinc-200 transition active:scale-95 focus:outline-none">
+      <svg class="w-5 h-5 mb-0.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <line x1="4" x2="20" y1="21" y2="21"/><line x1="4" x2="20" y1="14" y2="14"/><line x1="4" x2="20" y1="7" y2="7"/>
+        <circle cx="8" cy="21" r="2"/><circle cx="16" cy="14" r="2"/><circle cx="10" cy="7" r="2"/>
+      </svg>
+      <span class="text-[10px] font-mono tracking-wider font-medium">SETTINGS</span>
+    </button>
+  </nav>
+
+  <!-- ============================================================
+       MOBILE QUICK ACTION SHEET
+  ============================================================ -->
+  <div id="mobile-action-sheet" class="hidden md:hidden fixed inset-0 z-50 flex items-end justify-center"
+    style="background:rgba(0,0,0,0.85);backdrop-filter:blur(8px)" onclick="if(event.target===this)closeMobileActionSheet()">
+    <div class="modal-enter glass rounded-t-3xl w-full p-5 border-t border-zinc-700 max-h-[85vh] overflow-y-auto"
+      style="padding-bottom: max(1.5rem, env(safe-area-inset-bottom))">
+      
+      <!-- Sheet Drag Handle -->
+      <div class="sheet-drag-handle" onclick="closeMobileActionSheet()"></div>
+
+      <div class="flex items-center justify-between mb-4">
+        <div>
+          <h3 class="text-sm font-bold text-zinc-100 uppercase tracking-wider font-mono flex items-center gap-2">
+            <svg class="w-4 h-4 text-zinc-100" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+            Tactical Action Hub
+          </h3>
+          <p class="text-xs text-zinc-400 font-mono">Mobile rapid-response execution</p>
+        </div>
+        <button onclick="closeMobileActionSheet()" aria-label="Close action sheet" class="p-1 rounded-lg text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800">
+          <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+
+      <!-- 4 Action Grid Cards -->
+      <div class="grid grid-cols-2 gap-3 mb-4">
+        <!-- Park Thought -->
+        <button onclick="triggerHaptic('tap'); closeMobileActionSheet(); openParkedThoughtsModal();"
+          class="p-3.5 rounded-xl bg-zinc-900 border border-zinc-800 hover:border-zinc-700 flex flex-col items-start gap-2 text-left active:scale-95 transition">
+          <div class="w-8 h-8 rounded-lg bg-zinc-800 border border-zinc-700 flex items-center justify-center text-zinc-100">
+            <svg class="w-4 h-4 text-amber-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+          </div>
+          <div>
+            <div class="text-xs font-bold text-zinc-100 font-mono">Park Thought</div>
+            <div class="text-[10px] text-zinc-400">Capture impulse (Alt+D)</div>
+          </div>
+        </button>
+
+        <!-- Quick Distraction Phone -->
+        <button onclick="triggerHaptic('warning'); closeMobileActionSheet(); logDistraction('phone');"
+          class="p-3.5 rounded-xl bg-zinc-900 border border-zinc-800 hover:border-rose-900/50 flex flex-col items-start gap-2 text-left active:scale-95 transition">
+          <div class="w-8 h-8 rounded-lg bg-rose-500/10 border border-rose-500/30 flex items-center justify-center text-rose-400">
+            <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="2" width="14" height="20" rx="2" ry="2"/><line x1="12" y1="18" x2="12.01" y2="18"/></svg>
+          </div>
+          <div>
+            <div class="text-xs font-bold text-rose-300 font-mono">Log Phone Urge</div>
+            <div class="text-[10px] text-zinc-400">Flag noise event</div>
+          </div>
+        </button>
+
+        <!-- Zen Kiosk -->
+        <button onclick="triggerHaptic('tap'); closeMobileActionSheet(); enterZenMode();"
+          class="p-3.5 rounded-xl bg-zinc-900 border border-zinc-800 hover:border-zinc-700 flex flex-col items-start gap-2 text-left active:scale-95 transition">
+          <div class="w-8 h-8 rounded-lg bg-zinc-800 border border-zinc-700 flex items-center justify-center text-zinc-100">
+            <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/></svg>
+          </div>
+          <div>
+            <div class="text-xs font-bold text-zinc-100 font-mono">Zen Kiosk</div>
+            <div class="text-[10px] text-zinc-400">Fullscreen timer</div>
+          </div>
+        </button>
+
+        <!-- AI Assistant / Coach -->
+        <button onclick="triggerHaptic('tap'); closeMobileActionSheet(); toggleSupportChat();"
+          class="p-3.5 rounded-xl bg-zinc-900 border border-zinc-800 hover:border-zinc-700 flex flex-col items-start gap-2 text-left active:scale-95 transition">
+          <div class="w-8 h-8 rounded-lg bg-zinc-800 border border-zinc-700 flex items-center justify-center text-zinc-100">
+            <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+          </div>
+          <div>
+            <div class="text-xs font-bold text-zinc-100 font-mono">AI Coach</div>
+            <div class="text-[10px] text-zinc-400">Live triage advice</div>
+          </div>
+        </button>
+      </div>
+
+      <!-- Mobile Ambient Audio Quick Control -->
+      <div class="p-3.5 rounded-xl bg-zinc-900/90 border border-zinc-800">
+        <div class="flex items-center justify-between mb-2">
+          <span class="text-xs font-mono text-zinc-300 flex items-center gap-1.5 font-semibold">
+            <svg class="w-3.5 h-3.5 text-zinc-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>
+            Ambient Soundscape
+          </span>
+          <button onclick="triggerHaptic('tap'); toggleAudioMute(); updateMobileAudioUI();" id="mobile-btn-audio-mute"
+            class="text-xs font-mono text-zinc-400 hover:text-zinc-200 px-2 py-0.5 rounded bg-zinc-800">
+            Mute
+          </button>
+        </div>
+        <div class="grid grid-cols-4 gap-1.5 mb-2.5">
+          <button onclick="triggerHaptic('tap'); if(window.soundscapeEngine){soundscapeEngine.setChannel('off');updateMobileAudioUI();}" data-mchannel="off" class="mobile-sound-channel-btn py-1.5 px-2 rounded-lg text-[11px] font-mono border text-center transition bg-zinc-800 text-zinc-100 border-zinc-600">Off</button>
+          <button onclick="triggerHaptic('tap'); if(window.soundscapeEngine){soundscapeEngine.setChannel('brown');updateMobileAudioUI();}" data-mchannel="brown" class="mobile-sound-channel-btn py-1.5 px-2 rounded-lg text-[11px] font-mono border text-center transition bg-zinc-950 text-zinc-400 border-zinc-800">Brown</button>
+          <button onclick="triggerHaptic('tap'); if(window.soundscapeEngine){soundscapeEngine.setChannel('binaural');updateMobileAudioUI();}" data-mchannel="binaural" class="mobile-sound-channel-btn py-1.5 px-2 rounded-lg text-[11px] font-mono border text-center transition bg-zinc-950 text-zinc-400 border-zinc-800">40Hz</button>
+          <button onclick="triggerHaptic('tap'); if(window.soundscapeEngine){soundscapeEngine.setChannel('rainfall');updateMobileAudioUI();}" data-mchannel="rainfall" class="mobile-sound-channel-btn py-1.5 px-2 rounded-lg text-[11px] font-mono border text-center transition bg-zinc-950 text-zinc-400 border-zinc-800">Rain</button>
+        </div>
+        <div class="flex items-center gap-2">
+          <svg class="w-3.5 h-3.5 text-zinc-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/></svg>
+          <input id="mobile-audio-volume" type="range" min="0" max="100" value="50" oninput="if(window.soundscapeEngine)soundscapeEngine.setVolume(this.value / 100)" class="w-full h-1.5 bg-zinc-800 rounded accent-zinc-100 cursor-pointer" />
+          <svg class="w-3.5 h-3.5 text-zinc-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/></svg>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- Toast container -->
   <div id="toast-container" class="fixed top-4 right-4 z-[100] space-y-2 w-72"></div>
 
@@ -1002,6 +1680,163 @@
           });
         });
       }
+    }
+
+    // ---------------------------------------------------------------
+    // Mobile Haptic Feedback & Touch Ergonomics Engine
+    // ---------------------------------------------------------------
+    function triggerHaptic(type = 'tap') {
+      if (typeof navigator !== 'undefined' && navigator.vibrate) {
+        try {
+          if (type === 'tap') navigator.vibrate(12);
+          else if (type === 'success') navigator.vibrate([20, 50, 40]);
+          else if (type === 'warning') navigator.vibrate([60, 40, 60]);
+          else if (type === 'heavy') navigator.vibrate(80);
+        } catch (_) {}
+      }
+    }
+
+    function mobileNavTo(target) {
+      triggerHaptic('tap');
+      // Update dock button active states
+      document.querySelectorAll('.dock-nav-item').forEach(btn => {
+        btn.classList.remove('text-zinc-100', 'font-semibold');
+        btn.classList.add('text-zinc-400', 'font-medium');
+      });
+      const activeBtn = document.getElementById(`dock-btn-${target}`);
+      if (activeBtn) {
+        activeBtn.classList.remove('text-zinc-400', 'font-medium');
+        activeBtn.classList.add('text-zinc-100', 'font-semibold');
+      }
+
+      if (target === 'hud') {
+        const el = document.getElementById('hud-section');
+        if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      } else if (target === 'tasks') {
+        const el = document.getElementById('task-form');
+        if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      } else if (target === 'analytics') {
+        const el = document.getElementById('friction-analytics-section');
+        if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      } else if (target === 'settings') {
+        openSettingsDrawer();
+      }
+    }
+
+    function toggleMobileActionSheet() {
+      triggerHaptic('tap');
+      const sheet = document.getElementById('mobile-action-sheet');
+      if (!sheet) return;
+      if (sheet.classList.contains('hidden')) {
+        sheet.classList.remove('hidden');
+        updateMobileAudioUI();
+      } else {
+        sheet.classList.add('hidden');
+      }
+    }
+
+    function closeMobileActionSheet() {
+      const sheet = document.getElementById('mobile-action-sheet');
+      if (sheet) sheet.classList.add('hidden');
+    }
+
+    function updateMobileAudioUI() {
+      if (!window.soundscapeEngine) return;
+      const ch = window.soundscapeEngine.currentChannel || 'off';
+      document.querySelectorAll('.mobile-sound-channel-btn').forEach(btn => {
+        if (btn.getAttribute('data-mchannel') === ch) {
+          btn.className = 'mobile-sound-channel-btn py-1.5 px-2 rounded-lg text-[11px] font-mono border text-center transition bg-zinc-800 text-zinc-100 border-zinc-600';
+        } else {
+          btn.className = 'mobile-sound-channel-btn py-1.5 px-2 rounded-lg text-[11px] font-mono border text-center transition bg-zinc-950 text-zinc-400 border-zinc-800';
+        }
+      });
+      const volSlider = document.getElementById('mobile-audio-volume');
+      if (volSlider) {
+        volSlider.value = Math.round((window.soundscapeEngine.volume ?? 0.5) * 100);
+      }
+      const muteBtn = document.getElementById('mobile-btn-audio-mute');
+      if (muteBtn) {
+        muteBtn.textContent = window.soundscapeEngine.isMuted ? 'Unmute' : 'Mute';
+      }
+    }
+
+    function initMobileNav() {
+      // IntersectionObserver for scroll position highlighting on the mobile dock
+      if ('IntersectionObserver' in window) {
+        const sections = [
+          { el: document.getElementById('hud-section'), tab: 'hud' },
+          { el: document.getElementById('task-list'), tab: 'tasks' },
+          { el: document.getElementById('friction-analytics-section'), tab: 'analytics' },
+        ];
+        const observer = new IntersectionObserver((entries) => {
+          entries.forEach(entry => {
+            if (entry.isIntersecting) {
+              const matched = sections.find(s => s.el === entry.target);
+              if (matched) {
+                document.querySelectorAll('.dock-nav-item').forEach(btn => {
+                  btn.classList.remove('text-zinc-100', 'font-semibold');
+                  btn.classList.add('text-zinc-400', 'font-medium');
+                });
+                const activeBtn = document.getElementById(`dock-btn-${matched.tab}`);
+                if (activeBtn) {
+                  activeBtn.classList.remove('text-zinc-400', 'font-medium');
+                  activeBtn.classList.add('text-zinc-100', 'font-semibold');
+                }
+              }
+            }
+          });
+        }, { threshold: 0.25 });
+
+        sections.forEach(s => { if (s.el) observer.observe(s.el); });
+      }
+    }
+
+    function initModalTouchGestures() {
+      const modals = [
+        'modal-excuse',
+        'modal-viva',
+        'modal-parked-thoughts',
+        'mobile-action-sheet',
+        'modal-mobile-connect',
+        'modal-micro-start',
+        'modal-auth'
+      ];
+      modals.forEach(modalId => {
+        const modal = document.getElementById(modalId);
+        if (!modal) return;
+        const sheet = modal.querySelector('.modal-enter') || modal.firstElementChild;
+        if (!sheet) return;
+
+        let startY = 0;
+        let diffY = 0;
+
+        sheet.addEventListener('touchstart', (e) => {
+          startY = e.touches[0].clientY;
+          diffY = 0;
+        }, { passive: true });
+
+        sheet.addEventListener('touchmove', (e) => {
+          const currentY = e.touches[0].clientY;
+          diffY = currentY - startY;
+          if (diffY > 0 && sheet.scrollTop === 0) {
+            sheet.style.transform = `translateY(${Math.min(diffY, 140)}px)`;
+          }
+        }, { passive: true });
+
+        sheet.addEventListener('touchend', () => {
+          if (diffY > 75 && sheet.scrollTop === 0) {
+            triggerHaptic('tap');
+            sheet.style.transform = '';
+            if (modalId === 'mobile-action-sheet') {
+              closeMobileActionSheet();
+            } else {
+              closeModal(modalId);
+            }
+          } else {
+            sheet.style.transform = '';
+          }
+        }, { passive: true });
+      });
     }
 
     // ---------------------------------------------------------------
@@ -1612,6 +2447,10 @@
       // Initialize network connection mode
       detectConnectionMode();
 
+      // Initialize mobile navigation dock & touch gestures
+      initMobileNav();
+      initModalTouchGestures();
+
       // Poll for paste flags every 5s when a session is active
       setInterval(pollPasteFlag, 5000);
     });
@@ -1620,6 +2459,7 @@
     // Toast
     // ---------------------------------------------------------------
     function toast(msg, type = 'info') {
+      triggerHaptic(type === 'error' ? 'warning' : type === 'success' ? 'success' : 'tap');
       const colors = {
         info:    'bg-zinc-900 border-zinc-700 text-zinc-100',
         success: 'bg-zinc-900 border-emerald-600/70 text-emerald-300',
@@ -1708,6 +2548,10 @@
         document.getElementById('stat-ratio-val').textContent = r.execution_ratio_pct.toFixed(0) + '%';
       } catch(e) { /* silently fail */ }
       loadFrictionReport();
+      loadCircadianHeatmap();
+      loadStreakBadge();
+      loadDailyScorecard();
+      loadAllSettings();
     }
 
     async function loadFrictionReport() {
@@ -1817,6 +2661,17 @@
       }
     }
 
+    function escapeHtml(str) {
+      if (str === null || str === undefined) return '';
+      return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+    }
+    window.escapeHtml = escapeHtml;
+
     function renderTaskList(tasks) {
       const el = document.getElementById('task-list');
       if (!tasks.length) { el.innerHTML = '<p class="text-slate-500 text-sm italic">No tasks yet.</p>'; return; }
@@ -1826,7 +2681,7 @@
         <div class="flex items-center gap-2 px-3 py-2.5 rounded-xl bg-zinc-900/60 border border-zinc-800 hover:border-zinc-700 transition group">
           <span class="text-zinc-400">${getTrackSvg(t.category, 'w-4 h-4')}</span>
           <div class="flex-1 min-w-0">
-            <p class="text-sm font-medium text-zinc-200 truncate">${t.title}</p>
+            <p class="text-sm font-medium text-zinc-200 truncate">${escapeHtml(t.title)}</p>
             <div class="flex gap-2 mt-0.5">
               <span class="text-xs px-1.5 py-0.5 rounded ${priBadge[t.priority] || 'text-zinc-400'}">P${t.priority}</span>
               <span class="text-xs text-zinc-500">${t.estimated_duration_min}min</span>
@@ -1835,7 +2690,7 @@
               <span class="text-xs text-emerald-400 font-medium">${t.stretch_goal}↑</span>
             </div>
           </div>
-          <button onclick="selectTask('${t.id}')"
+          <button onclick="selectTask('${escapeHtml(t.id)}')"
             class="opacity-0 group-hover:opacity-100 text-xs px-2.5 py-1 rounded-lg bg-zinc-200 hover:bg-white text-zinc-950 font-bold transition">
             Select
           </button>
@@ -1847,7 +2702,7 @@
       const sel = document.getElementById('qs-task');
       const prev = sel.value;
       sel.innerHTML = '<option value="">— Select task —</option>' + tasks.map(t =>
-        `<option value="${t.id}">${t.title} (${t.category})</option>`
+        `<option value="${escapeHtml(t.id)}">${escapeHtml(t.title)} (${escapeHtml(t.category)})</option>`
       ).join('');
       if (prev) sel.value = prev;
     }
@@ -2018,6 +2873,7 @@
         }
 
         // Update UI
+        triggerHaptic('heavy');
         document.getElementById('hud-idle').classList.add('hidden');
         document.getElementById('hud-active').classList.remove('hidden');
         document.getElementById('session-task-name').textContent = activeTaskData?.title || 'Task';
@@ -2035,6 +2891,13 @@
         }
 
         startTimer();
+        if (typeof soundscapeEngine !== 'undefined') {
+          soundscapeEngine.onSessionStateChanged('active');
+        }
+        updateZenViewData();
+        if (window.currentSettings && window.currentSettings.auto_zen_mode) {
+          setTimeout(() => enterZenMode(), 100);
+        }
         toast(isFiveMinInterventionActive ? '5-min micro-start started (Pomodoro cap 25m)!' : 'Session started!', 'success');
         document.getElementById('paste-warning').classList.add('hidden');
         resetDistCounts();
@@ -2058,6 +2921,18 @@
       `;
     }
 
+    function updateZenViewData() {
+      if (!activeTaskData) return;
+      const taskTitleEl = document.getElementById('zen-task-title');
+      if (taskTitleEl) taskTitleEl.textContent = activeTaskData.title || 'Deep Focus Block';
+      const minEl = document.getElementById('zen-min-goal');
+      const tgtEl = document.getElementById('zen-target-goal');
+      const strEl = document.getElementById('zen-stretch-goal');
+      if (minEl) minEl.textContent = `Min: ${activeTaskData.min_goal}m`;
+      if (tgtEl) tgtEl.textContent = `Target: ${activeTaskData.target_goal}m`;
+      if (strEl) strEl.textContent = `Stretch: ${activeTaskData.stretch_goal}m`;
+    }
+
     function startTimer() {
       clearInterval(timerInterval);
       timerInterval = setInterval(() => {
@@ -2065,21 +2940,37 @@
         const h = String(Math.floor(elapsed / 3600)).padStart(2, '0');
         const m = String(Math.floor((elapsed % 3600) / 60)).padStart(2, '0');
         const s = String(elapsed % 60).padStart(2, '0');
-        document.getElementById('timer-display').textContent = `${h}:${m}:${s}`;
+        const isBlind = Boolean(window.currentSettings && window.currentSettings.blind_focus_mode);
+        const timeStr = isBlind ? '••:••' : `${h}:${m}:${s}`;
+        document.getElementById('timer-display').textContent = timeStr;
+
+        // Zen Kiosk timer & progress
+        const zenDisplay = document.getElementById('zen-timer-display');
+        if (zenDisplay) zenDisplay.textContent = timeStr;
 
         // Color progression by goal
         if (activeTaskData) {
           const elapsedMin = elapsed / 60;
           const tc = document.getElementById('timer-circle');
+          const targetMin = activeTaskData.target_goal || 50;
+          const pct = Math.min(100, Math.round((elapsedMin / targetMin) * 100));
+          const zenBar = document.getElementById('zen-progress-bar');
+          if (zenBar) zenBar.style.width = `${pct}%`;
+
           if (elapsedMin >= activeTaskData.stretch_goal) {
             tc.style.borderColor = '#10b981';
             document.getElementById('timer-display').style.color = '#10b981';
+            if (zenDisplay) zenDisplay.style.color = '#10b981';
           } else if (elapsedMin >= activeTaskData.target_goal) {
             tc.style.borderColor = '#fafafa';
             document.getElementById('timer-display').style.color = '#fafafa';
+            if (zenDisplay) zenDisplay.style.color = '#fafafa';
           } else if (elapsedMin >= activeTaskData.min_goal) {
             tc.style.borderColor = '#f59e0b';
             document.getElementById('timer-display').style.color = '#f59e0b';
+            if (zenDisplay) zenDisplay.style.color = '#f59e0b';
+          } else {
+            if (zenDisplay) zenDisplay.style.color = '#e4e4e7';
           }
         }
       }, 1000);
@@ -2088,9 +2979,15 @@
     async function endSession() {
       if (!activeSessionId) return;
       clearInterval(timerInterval);
+      const prevSessionId = activeSessionId;
       const elapsed = Math.floor((new Date() - sessionStartTime) / 1000);
+      if (typeof soundscapeEngine !== 'undefined') {
+        soundscapeEngine.onSessionStateChanged('completed');
+      }
+      exitZenMode();
+
       try {
-        await api('POST', `/sessions/${activeSessionId}/end`, { notes: '' });
+        await api('POST', `/sessions/${prevSessionId}/end`, { notes: '' });
 
         // If micro-start intervention completes within first 5m (<= 300s):
         if (isFiveMinInterventionActive && elapsed <= 300) {
@@ -2102,8 +2999,11 @@
         }
 
         toast('Session ended. Opening viva modal…', 'success');
-        currentVivaSessionId = activeSessionId;
+        currentVivaSessionId = prevSessionId;
         openVivaModal();
+        if (typeof loadSessionParkedThoughts === 'function') {
+          loadSessionParkedThoughts(prevSessionId);
+        }
         resetHUD();
         loadStats();
       } catch(e) {
@@ -2116,6 +3016,10 @@
       activeTaskId = null;
       isFiveMinInterventionActive = false;
       microStartConfirmed = false;
+      if (typeof soundscapeEngine !== 'undefined') {
+        soundscapeEngine.onSessionStateChanged('completed');
+      }
+      exitZenMode();
       document.getElementById('hud-idle').classList.remove('hidden');
       document.getElementById('hud-active').classList.add('hidden');
       document.getElementById('timer-display').textContent = '00:00:00';
@@ -2151,6 +3055,7 @@
       }
 
       try {
+        triggerHaptic('warning');
         const payload = { session_id: activeSessionId, interruption_type: type };
         if (note) payload.note = note;
         const res = await api('POST', '/distractions', payload);
@@ -2358,6 +3263,958 @@
     }
 
     // ---------------------------------------------------------------
+    // 0. Settings Drawer & Daily Execution Scorecard (DEI) Suite
+    // ---------------------------------------------------------------
+    window.currentSettings = null;
+
+    async function loadDailyScorecard(targetDate) {
+      try {
+        const query = targetDate ? `?date=${targetDate}` : '';
+        const res = await api('GET', `/reports/daily-scorecard${query}`);
+        if (!res) return;
+
+        const gauge = document.getElementById('scorecard-gauge');
+        const pill = document.getElementById('scorecard-status-pill');
+        const verMin = document.getElementById('scorecard-verified-min');
+        const floorMin = document.getElementById('scorecard-target-floor');
+        const distEl = document.getElementById('scorecard-distractions');
+        const pasteEl = document.getElementById('scorecard-paste-flags');
+        const dateLbl = document.getElementById('scorecard-date-label');
+
+        if (gauge) {
+          gauge.innerHTML = `${res.score.toFixed(1)}<span class="text-sm font-normal text-zinc-500">/100</span>`;
+        }
+        if (verMin) verMin.textContent = `${res.verified_minutes.toFixed(1)}m`;
+        if (floorMin) floorMin.textContent = `${res.target_minutes}m`;
+        if (distEl) distEl.textContent = res.distractions;
+        if (pasteEl) pasteEl.textContent = res.paste_bursts;
+        if (dateLbl) {
+          dateLbl.textContent = `Scorecard for ${res.date} • ${res.completed_blocks} completed block${res.completed_blocks === 1 ? '' : 's'}`;
+        }
+
+        if (pill) {
+          pill.textContent = `[${res.status_grade}]`;
+          if (res.status_grade === 'OPTIMAL') {
+            pill.className = 'px-2.5 py-1 rounded-full text-xs font-mono font-bold uppercase tracking-wider bg-zinc-800 text-zinc-100 border border-zinc-700 shadow-sm';
+          } else if (res.status_grade === 'SUBPAR') {
+            pill.className = 'px-2.5 py-1 rounded-full text-xs font-mono font-bold uppercase tracking-wider bg-zinc-900 text-amber-500 border border-amber-500/40';
+          } else {
+            pill.className = 'px-2.5 py-1 rounded-full text-xs font-mono font-bold uppercase tracking-wider bg-zinc-900 text-rose-500 border border-rose-500/40';
+          }
+        }
+      } catch (err) {
+        console.warn('Failed loading daily scorecard:', err);
+      }
+    }
+    window.loadDailyScorecard = loadDailyScorecard;
+
+    function openSettingsDrawer() {
+      const drawer = document.getElementById('drawer-settings');
+      if (drawer) drawer.classList.remove('hidden');
+      loadAllSettings();
+      loadSystemEndpoints();
+    }
+    window.openSettingsDrawer = openSettingsDrawer;
+
+    function closeSettingsDrawer() {
+      const drawer = document.getElementById('drawer-settings');
+      if (drawer) drawer.classList.add('hidden');
+    }
+    window.closeSettingsDrawer = closeSettingsDrawer;
+
+    async function loadAllSettings() {
+      try {
+        const settings = await api('GET', '/api/settings');
+        window.currentSettings = settings;
+
+        // Populate Section 1: Tracks & Verification
+        const wpInput = document.getElementById('setting-workspace-path');
+        if (wpInput) wpInput.value = settings.workspace_path || 'D:\\code\\workspace';
+
+        const strictnessSel = document.getElementById('setting-viva-strictness');
+        if (strictnessSel) strictnessSel.value = settings.viva_strictness || 'standard';
+
+        const autoFailPaste = document.getElementById('setting-auto-fail-paste');
+        if (autoFailPaste) autoFailPaste.checked = Boolean(settings.auto_fail_paste_bursts);
+
+        const tracks = settings.custom_tracks || settings.tracks || [];
+        renderTracksSettings(tracks);
+        updateCategoryOptions(tracks);
+
+        // Populate Section 2: Connectivity
+        const ntfyInput = document.getElementById('setting-ntfy-topic');
+        if (ntfyInput) ntfyInput.value = settings.ntfy_topic || 'focus_engine_ntfy';
+
+        const dndChk = document.getElementById('setting-auto-clear-dnd');
+        if (dndChk) dndChk.checked = Boolean(settings.auto_clear_samsung_dnd);
+
+        const periphChk = document.getElementById('setting-peripheral-enforced');
+        if (periphChk) periphChk.checked = Boolean(settings.peripheral_boundary_enforced);
+
+        // Populate Section 3: Session Mechanics
+        const minInput = document.getElementById('setting-default-min');
+        if (minInput) minInput.value = settings.default_min_minutes || 25;
+
+        const tgtInput = document.getElementById('setting-default-target');
+        if (tgtInput) tgtInput.value = settings.default_target_minutes || 60;
+
+        const strInput = document.getElementById('setting-default-stretch');
+        if (strInput) strInput.value = settings.default_stretch_minutes || 90;
+
+        const microChk = document.getElementById('setting-micro-start');
+        if (microChk) microChk.checked = Boolean(settings.enable_micro_start_gate);
+
+        const penaltyChk = document.getElementById('setting-penalty-streak');
+        if (penaltyChk) penaltyChk.checked = Boolean(settings.penalize_early_abort_streak);
+
+        const bailInput = document.getElementById('setting-bail-hold');
+        if (bailInput) bailInput.value = settings.emergency_bail_hold_seconds || 3;
+
+        // Populate Section 4: HUD & Audio
+        const sndSel = document.getElementById('setting-soundscape');
+        if (sndSel) sndSel.value = settings.default_soundscape || 'off';
+
+        const volSlider = document.getElementById('setting-volume');
+        const volLabel = document.getElementById('setting-volume-label');
+        const volPct = Math.round((settings.default_volume !== undefined ? settings.default_volume : 0.7) * 100);
+        if (volSlider) volSlider.value = volPct;
+        if (volLabel) volLabel.textContent = `${volPct}%`;
+
+        const zenChk = document.getElementById('setting-auto-zen');
+        if (zenChk) zenChk.checked = Boolean(settings.auto_zen_mode);
+
+        const blindChk = document.getElementById('setting-blind-focus');
+        if (blindChk) blindChk.checked = Boolean(settings.blind_focus_mode);
+
+        const dailyFloorInput = document.getElementById('setting-daily-target-min');
+        if (dailyFloorInput) dailyFloorInput.value = settings.daily_target_minutes || 180;
+
+        // Populate Section 5: Account
+        const emailBadge = document.getElementById('setting-user-email');
+        const uidBadge = document.getElementById('setting-user-id');
+        const localEmail = localStorage.getItem('focus_user_email');
+        if (emailBadge) emailBadge.textContent = localEmail || (settings.user_id + '@local');
+        if (uidBadge) uidBadge.textContent = settings.user_id || 'dev-user';
+
+        // Bind volume slider dynamic label
+        if (volSlider && !volSlider._bound) {
+          volSlider._bound = true;
+          volSlider.addEventListener('input', (e) => {
+            if (volLabel) volLabel.textContent = `${e.target.value}%`;
+          });
+        }
+      } catch (err) {
+        console.warn('Failed loading user settings:', err);
+      }
+    }
+    window.loadAllSettings = loadAllSettings;
+
+    function renderTracksSettings(tracks) {
+      const listEl = document.getElementById('settings-track-list');
+      const countEl = document.getElementById('settings-track-count');
+      if (!listEl) return;
+
+      if (!tracks || !tracks.length) {
+        listEl.innerHTML = '<p class="text-xs text-zinc-500 italic">No custom study tracks defined.</p>';
+        if (countEl) countEl.textContent = '0 tracks';
+        return;
+      }
+
+      if (countEl) countEl.textContent = `${tracks.length} track${tracks.length === 1 ? '' : 's'}`;
+
+      listEl.innerHTML = tracks.map(t => {
+        const isWatchdog = Boolean(t.requires_code_watchdog);
+        return `
+          <div class="p-3 rounded-lg bg-zinc-950 border border-zinc-800 flex items-center justify-between gap-3 text-xs">
+            <div class="flex-1 min-w-0">
+              <div class="flex items-center gap-2">
+                <span class="font-bold text-zinc-100">${escapeHtml(t.label)}</span>
+                <span class="text-[10px] mono px-1.5 py-0.5 rounded bg-zinc-900 border border-zinc-700 text-zinc-400">${escapeHtml(t.id)}</span>
+                ${isWatchdog ? '<span class="text-[10px] mono px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/30">Watchdog</span>' : ''}
+              </div>
+              <div class="flex items-center gap-3 mt-1 text-[11px] text-zinc-400 mono">
+                <span>Duration: ${Number(t.default_duration_min) || 45}m</span>
+                <span>•</span>
+                <span>Floor (F): ${Number(t.friction_threshold) || 3}</span>
+              </div>
+            </div>
+            <button onclick="deleteCustomTrack('${escapeHtml(t.id)}')"
+              class="text-zinc-500 hover:text-rose-400 p-1.5 rounded-lg hover:bg-zinc-900 transition" title="Delete track">
+              <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+          </div>
+        `;
+      }).join('');
+    }
+
+    function updateCategoryOptions(tracks) {
+      const catSelect = document.getElementById('f-category');
+      if (!catSelect || !tracks) return;
+      const currentVal = catSelect.value;
+      catSelect.innerHTML = tracks.map(t => `<option value="${t.id}">${t.label}</option>`).join('');
+      if (currentVal && tracks.some(t => t.id === currentVal)) {
+        catSelect.value = currentVal;
+      }
+    }
+
+    async function saveCustomTrack() {
+      const idInput = document.getElementById('set-track-id');
+      const labelInput = document.getElementById('set-track-label');
+      const durInput = document.getElementById('set-track-duration');
+      const frictInput = document.getElementById('set-track-friction');
+      const wdSelect = document.getElementById('set-track-watchdog');
+      const promptInput = document.getElementById('set-track-prompt');
+
+      const id = idInput ? idInput.value.trim().toLowerCase().replace(/\\s+/g, '_') : '';
+      const label = labelInput ? labelInput.value.trim() : '';
+      if (!id || !label) {
+        toast('Track ID and Label are required.', 'warning');
+        return;
+      }
+
+      const payload = {
+        id,
+        label,
+        default_duration_min: parseInt(durInput?.value, 10) || 45,
+        friction_threshold: parseInt(frictInput?.value, 10) || 3,
+        requires_code_watchdog: wdSelect?.value === 'true',
+        verification_prompt_override: promptInput ? promptInput.value.trim() : null,
+        custom_viva_prompt: promptInput ? promptInput.value.trim() : null,
+      };
+
+      try {
+        await api('POST', '/api/settings/tracks', payload);
+        toast(`Track '${label}' saved successfully!`, 'success');
+        if (idInput) idInput.value = '';
+        if (labelInput) labelInput.value = '';
+        if (promptInput) promptInput.value = '';
+        await loadAllSettings();
+      } catch (err) {
+        toast('Failed saving track: ' + err.message, 'error');
+      }
+    }
+    window.saveCustomTrack = saveCustomTrack;
+
+    async function deleteCustomTrack(trackId) {
+      if (!confirm(`Are you sure you want to delete track '${trackId}'?`)) return;
+      try {
+        await api('DELETE', `/api/settings/tracks/${trackId}`);
+        toast(`Track '${trackId}' deleted.`, 'info');
+        await loadAllSettings();
+      } catch (err) {
+        toast('Failed deleting track: ' + err.message, 'error');
+      }
+    }
+    window.deleteCustomTrack = deleteCustomTrack;
+
+    async function saveAllSettings() {
+      const btn = document.getElementById('btn-save-settings');
+      if (btn) { btn.disabled = true; btn.textContent = 'Saving…'; }
+
+      try {
+        const payload = {
+          workspace_path: document.getElementById('setting-workspace-path')?.value.trim() || 'D:\\\\code\\\\workspace',
+          viva_strictness: document.getElementById('setting-viva-strictness')?.value || 'standard',
+          auto_fail_paste_bursts: Boolean(document.getElementById('setting-auto-fail-paste')?.checked),
+          ntfy_topic: document.getElementById('setting-ntfy-topic')?.value.trim() || 'focus_engine_ntfy',
+          auto_clear_samsung_dnd: Boolean(document.getElementById('setting-auto-clear-dnd')?.checked),
+          peripheral_boundary_enforced: Boolean(document.getElementById('setting-peripheral-enforced')?.checked),
+          default_min_minutes: parseInt(document.getElementById('setting-default-min')?.value, 10) || 25,
+          default_target_minutes: parseInt(document.getElementById('setting-default-target')?.value, 10) || 60,
+          default_stretch_minutes: parseInt(document.getElementById('setting-default-stretch')?.value, 10) || 90,
+          enable_micro_start_gate: Boolean(document.getElementById('setting-micro-start')?.checked),
+          penalize_early_abort_streak: Boolean(document.getElementById('setting-penalty-streak')?.checked),
+          emergency_bail_hold_seconds: parseInt(document.getElementById('setting-bail-hold')?.value, 10) || 3,
+          default_soundscape: document.getElementById('setting-soundscape')?.value || 'off',
+          default_volume: (parseInt(document.getElementById('setting-volume')?.value, 10) || 70) / 100,
+          auto_zen_mode: Boolean(document.getElementById('setting-auto-zen')?.checked),
+          blind_focus_mode: Boolean(document.getElementById('setting-blind-focus')?.checked),
+          daily_target_minutes: parseInt(document.getElementById('setting-daily-target-min')?.value, 10) || 180,
+        };
+
+        const res = await api('PUT', '/api/settings', payload);
+        window.currentSettings = res;
+        toast('Configuration persisted successfully!', 'success');
+        closeSettingsDrawer();
+        loadDailyScorecard();
+      } catch (err) {
+        toast('Save failed: ' + err.message, 'error');
+      } finally {
+        if (btn) {
+          btn.disabled = false;
+          btn.innerHTML = '<svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg><span>Save</span>';
+        }
+      }
+    }
+    window.saveAllSettings = saveAllSettings;
+
+    async function loadSystemEndpoints() {
+      try {
+        const res = await api('GET', '/api/settings/system-endpoints');
+        const lanInput = document.getElementById('endpoint-lan-url');
+        const tunInput = document.getElementById('endpoint-tunnel-url');
+        if (lanInput && res.lan_url) lanInput.value = res.lan_url;
+        if (tunInput && res.tunnel_url) tunInput.value = res.tunnel_url;
+      } catch (err) {
+        console.warn('System endpoints error:', err);
+      }
+    }
+
+    function copyEndpointUrl(id) {
+      const el = document.getElementById(id);
+      if (!el) return;
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(el.value).then(() => {
+          toast('Copied URL to clipboard!', 'success');
+        }).catch(() => {
+          el.select();
+          document.execCommand('copy');
+          toast('Copied URL to clipboard!', 'success');
+        });
+      } else {
+        el.select();
+        document.execCommand('copy');
+        toast('Copied URL to clipboard!', 'success');
+      }
+    }
+    window.copyEndpointUrl = copyEndpointUrl;
+
+    async function testPingNotification() {
+      const btn = document.getElementById('btn-test-ping');
+      const fb = document.getElementById('ping-feedback-msg');
+      if (btn) { btn.disabled = true; btn.textContent = 'Pinging…'; }
+      try {
+        const res = await api('POST', '/api/settings/test-ping');
+        if (fb) {
+          fb.textContent = res.message || 'Ping delivered!';
+          fb.classList.remove('hidden');
+          fb.className = 'text-[10px] mt-1 text-emerald-400';
+        }
+        toast(res.message || 'Ping sent to phone!', res.success ? 'success' : 'warning');
+      } catch (err) {
+        if (fb) {
+          fb.textContent = 'Error: ' + err.message;
+          fb.classList.remove('hidden');
+          fb.className = 'text-[10px] mt-1 text-rose-400';
+        }
+        toast('Ping failed: ' + err.message, 'error');
+      } finally {
+        if (btn) {
+          btn.disabled = false;
+          btn.innerHTML = '<svg class="w-3.5 h-3.5 text-amber-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg><span>Test Ping</span>';
+        }
+      }
+    }
+    window.testPingNotification = testPingNotification;
+
+    async function exportTelemetryData() {
+      try {
+        toast('Aggregating telemetry archive…', 'info');
+        const token = localStorage.getItem('focus_auth_token');
+        const headers = {};
+        if (token) headers['Authorization'] = `Bearer ${token}`;
+
+        const res = await fetch('/api/settings/export-telemetry', { headers });
+        if (!res.ok) throw new Error(`Export failed (${res.status})`);
+
+        const blob = await res.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.style.display = 'none';
+        a.href = url;
+        a.download = `focus_engine_telemetry_${Date.now()}.json`;
+        document.body.appendChild(a);
+        a.click();
+        window.URL.revokeObjectURL(url);
+        document.body.removeChild(a);
+        toast('Telemetry JSON downloaded successfully!', 'success');
+      } catch (err) {
+        toast('Telemetry export error: ' + err.message, 'error');
+      }
+    }
+    window.exportTelemetryData = exportTelemetryData;
+
+    async function purgeStaleCache() {
+      try {
+        if ('caches' in window) {
+          const names = await caches.keys();
+          await Promise.all(names.map(name => caches.delete(name)));
+        }
+        if ('serviceWorker' in navigator) {
+          const regs = await navigator.serviceWorker.getRegistrations();
+          await Promise.all(regs.map(reg => reg.unregister()));
+        }
+        sessionStorage.clear();
+        toast('Cache purged! Hard reloading…', 'info');
+        setTimeout(() => window.location.reload(true), 600);
+      } catch (err) {
+        toast('Cache purge error: ' + err.message, 'error');
+      }
+    }
+    window.purgeStaleCache = purgeStaleCache;
+
+    function signOutAccount() {
+      localStorage.removeItem('focus_auth_token');
+      localStorage.removeItem('focus_user_id');
+      localStorage.removeItem('focus_user_email');
+      closeSettingsDrawer();
+      toast('Signed out. Please sign in.', 'info');
+      checkAuthStatus();
+      openAuthModal();
+    }
+    window.signOutAccount = signOutAccount;
+
+    // ---------------------------------------------------------------
+    // 1. Web Audio Ambient Soundscape Engine (Zero-Dependency)
+    // ---------------------------------------------------------------
+    class AmbientSoundscapeEngine {
+      constructor() {
+        this.ctx = null;
+        this.currentChannel = 'off';
+        this.masterGain = null;
+        this.fadeGain = null;
+        this.volume = 0.5;
+        this.isMuted = false;
+        this.activeNodes = [];
+        this.isSessionActive = false;
+      }
+
+      init() {
+        if (this.ctx) return;
+        const AudioCtx = window.AudioContext || window.webkitAudioContext;
+        if (!AudioCtx) return;
+        this.ctx = new AudioCtx();
+        this.masterGain = this.ctx.createGain();
+        this.fadeGain = this.ctx.createGain();
+        this.masterGain.gain.setValueAtTime(this.volume, this.ctx.currentTime);
+        this.fadeGain.gain.setValueAtTime(0.0001, this.ctx.currentTime);
+        this.fadeGain.connect(this.masterGain);
+        this.masterGain.connect(this.ctx.destination);
+      }
+
+      unlock() {
+        this.init();
+        if (this.ctx && this.ctx.state === 'suspended') {
+          this.ctx.resume().catch(() => {});
+        }
+      }
+
+      setVolume(vol) {
+        this.volume = Math.max(0, Math.min(1, vol));
+        if (this.masterGain && this.ctx) {
+          this.masterGain.gain.setValueAtTime(this.isMuted ? 0 : this.volume, this.ctx.currentTime);
+        }
+      }
+
+      toggleMute() {
+        this.isMuted = !this.isMuted;
+        if (this.masterGain && this.ctx) {
+          this.masterGain.gain.setValueAtTime(this.isMuted ? 0 : this.volume, this.ctx.currentTime);
+        }
+        this.updateUi();
+        return this.isMuted;
+      }
+
+      updateUi() {
+        const icon = document.getElementById('audio-mute-icon');
+        const statusIcon = document.getElementById('audio-status-icon');
+        const zenLabel = document.getElementById('zen-audio-label');
+        if (icon) {
+          if (this.isMuted) {
+            icon.innerHTML = '<polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><line x1="23" y1="9" x2="17" y2="15"/><line x1="17" y1="9" x2="23" y2="15"/>';
+          } else {
+            icon.innerHTML = '<polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/>';
+          }
+        }
+        if (statusIcon) {
+          statusIcon.style.color = (this.currentChannel !== 'off' && !this.isMuted) ? '#10b981' : '#71717a';
+        }
+        if (zenLabel) {
+          const names = { off: 'Off', brown: 'Brown Noise', binaural: 'Binaural 40Hz', rainfall: 'Rainfall' };
+          zenLabel.textContent = `Ambient: ${names[this.currentChannel] || 'Off'}${this.isMuted ? ' (Muted)' : ''}`;
+        }
+      }
+
+      fadeIn(duration = 1.5) {
+        if (!this.ctx || this.currentChannel === 'off') return;
+        this.unlock();
+        const now = this.ctx.currentTime;
+        this.fadeGain.gain.cancelScheduledValues(now);
+        this.fadeGain.gain.setValueAtTime(Math.max(0.0001, this.fadeGain.gain.value), now);
+        this.fadeGain.gain.linearRampToValueAtTime(1.0, now + duration);
+      }
+
+      fadeOut(duration = 1.0) {
+        if (!this.ctx) return;
+        const now = this.ctx.currentTime;
+        this.fadeGain.gain.cancelScheduledValues(now);
+        this.fadeGain.gain.setValueAtTime(Math.max(0.0001, this.fadeGain.gain.value), now);
+        this.fadeGain.gain.linearRampToValueAtTime(0.0001, now + duration);
+      }
+
+      stopNodes() {
+        this.activeNodes.forEach(n => {
+          try {
+            if (n.stop) n.stop();
+            if (n.disconnect) n.disconnect();
+          } catch (_) {}
+        });
+        this.activeNodes = [];
+      }
+
+      setChannel(channel) {
+        this.unlock();
+        this.currentChannel = channel;
+        this.stopNodes();
+        const sel = document.getElementById('audio-channel-select');
+        if (sel && sel.value !== channel) sel.value = channel;
+
+        if (!this.ctx || channel === 'off') {
+          this.updateUi();
+          return;
+        }
+
+        if (channel === 'brown') {
+          this.startBrownNoise();
+        } else if (channel === 'binaural') {
+          this.startBinaural();
+        } else if (channel === 'rainfall') {
+          this.startRainfall();
+        }
+
+        if (this.isSessionActive) {
+          this.fadeIn(1.5);
+        } else {
+          // Subtle preview fade
+          this.fadeIn(0.8);
+        }
+        this.updateUi();
+      }
+
+      startBrownNoise() {
+        const bufferSize = this.ctx.sampleRate * 2;
+        const buffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
+        const data = buffer.getChannelData(0);
+        let lastOut = 0.0;
+        for (let i = 0; i < bufferSize; i++) {
+          const white = Math.random() * 2 - 1;
+          data[i] = (lastOut + (0.02 * white)) / 1.02;
+          lastOut = data[i];
+          data[i] *= 3.8;
+        }
+        const src = this.ctx.createBufferSource();
+        src.buffer = buffer;
+        src.loop = true;
+
+        const filter = this.ctx.createBiquadFilter();
+        filter.type = 'lowpass';
+        filter.frequency.setValueAtTime(450, this.ctx.currentTime);
+
+        src.connect(filter);
+        filter.connect(this.fadeGain);
+        src.start();
+        this.activeNodes.push(src, filter);
+      }
+
+      startBinaural() {
+        // 40Hz Gamma Focus: Carrier = 200 Hz (left), 240 Hz (right)
+        const carrier = 200;
+        const diff = 40;
+
+        const oscL = this.ctx.createOscillator();
+        oscL.type = 'sine';
+        oscL.frequency.setValueAtTime(carrier, this.ctx.currentTime);
+
+        const oscR = this.ctx.createOscillator();
+        oscR.type = 'sine';
+        oscR.frequency.setValueAtTime(carrier + diff, this.ctx.currentTime);
+
+        const merger = this.ctx.createChannelMerger(2);
+        const gainL = this.ctx.createGain();
+        const gainR = this.ctx.createGain();
+        gainL.gain.setValueAtTime(0.45, this.ctx.currentTime);
+        gainR.gain.setValueAtTime(0.45, this.ctx.currentTime);
+
+        oscL.connect(gainL);
+        gainL.connect(merger, 0, 0);
+
+        oscR.connect(gainR);
+        gainR.connect(merger, 0, 1);
+
+        merger.connect(this.fadeGain);
+        oscL.start();
+        oscR.start();
+        this.activeNodes.push(oscL, oscR, gainL, gainR, merger);
+      }
+
+      startRainfall() {
+        const bufferSize = this.ctx.sampleRate * 2;
+        const buffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
+        const data = buffer.getChannelData(0);
+        let b0 = 0, b1 = 0, b2 = 0, b3 = 0, b4 = 0, b5 = 0, b6 = 0;
+        for (let i = 0; i < bufferSize; i++) {
+          const white = Math.random() * 2 - 1;
+          b0 = 0.99886 * b0 + white * 0.0555179;
+          b1 = 0.99332 * b1 + white * 0.0750759;
+          b2 = 0.96900 * b2 + white * 0.1538520;
+          b3 = 0.86650 * b3 + white * 0.3104856;
+          b4 = 0.55000 * b4 + white * 0.5329522;
+          b5 = -0.7616 * b5 - white * 0.0168980;
+          data[i] = (b0 + b1 + b2 + b3 + b4 + b5 + b6 + white * 0.5362) * 0.13;
+          b6 = white * 0.115926;
+        }
+        const src = this.ctx.createBufferSource();
+        src.buffer = buffer;
+        src.loop = true;
+
+        const bp = this.ctx.createBiquadFilter();
+        bp.type = 'bandpass';
+        bp.frequency.setValueAtTime(1200, this.ctx.currentTime);
+        bp.Q.setValueAtTime(0.8, this.ctx.currentTime);
+
+        const lp = this.ctx.createBiquadFilter();
+        lp.type = 'lowpass';
+        lp.frequency.setValueAtTime(3200, this.ctx.currentTime);
+
+        src.connect(bp);
+        bp.connect(lp);
+        lp.connect(this.fadeGain);
+
+        src.start();
+        this.activeNodes.push(src, bp, lp);
+      }
+
+      onSessionStateChanged(state) {
+        if (state === 'active') {
+          this.isSessionActive = true;
+          this.fadeIn(1.5);
+        } else {
+          this.isSessionActive = false;
+          this.fadeOut(1.0);
+        }
+      }
+    }
+
+    const soundscapeEngine = new AmbientSoundscapeEngine();
+    window.soundscapeEngine = soundscapeEngine;
+
+    function toggleAudioMute() {
+      soundscapeEngine.toggleMute();
+    }
+
+    // Unlock Web Audio API on initial user tap
+    ['click', 'touchstart', 'pointerdown'].forEach(evt => {
+      window.addEventListener(evt, () => soundscapeEngine.unlock(), { once: true, passive: true });
+    });
+
+
+    // ---------------------------------------------------------------
+    // 2. Fullscreen Zen Kiosk Mode
+    // ---------------------------------------------------------------
+    let isZenMode = false;
+    let zenHoldTimer = null;
+    let zenHoldStart = null;
+
+    function toggleZenMode() {
+      if (isZenMode) {
+        exitZenMode();
+      } else {
+        enterZenMode();
+      }
+    }
+    window.toggleZenMode = toggleZenMode;
+
+    function enterZenMode() {
+      if (!activeSessionId) {
+        toast('Start an active session to enter Zen Kiosk Mode.', 'warning');
+        return;
+      }
+      isZenMode = true;
+      const kiosk = document.getElementById('zen-kiosk-view');
+      if (kiosk) kiosk.classList.remove('hidden');
+
+      updateZenViewData();
+      soundscapeEngine.updateUi();
+
+      if (document.documentElement.requestFullscreen) {
+        document.documentElement.requestFullscreen().catch(() => {});
+      } else if (document.documentElement.webkitRequestFullscreen) {
+        document.documentElement.webkitRequestFullscreen().catch(() => {});
+      }
+    }
+
+    function exitZenMode() {
+      isZenMode = false;
+      const kiosk = document.getElementById('zen-kiosk-view');
+      if (kiosk) kiosk.classList.add('hidden');
+
+      if (document.fullscreenElement) {
+        document.exitFullscreen().catch(() => {});
+      } else if (document.webkitFullscreenElement) {
+        document.webkitExitFullscreen().catch(() => {});
+      }
+    }
+
+    // 3-Second Hold-to-Exit Handler with Premature Abort Streak Break
+    const zenExitBtn = document.getElementById('zen-exit-btn');
+    const zenExitFill = document.getElementById('zen-exit-fill');
+    const zenExitLabel = document.getElementById('zen-exit-label');
+
+    function startZenHold(e) {
+      if (e) e.preventDefault();
+      zenHoldStart = Date.now();
+      if (zenExitFill) zenExitFill.style.width = '0%';
+      if (zenExitLabel) zenExitLabel.textContent = 'Hold (3s)...';
+
+      clearInterval(zenHoldTimer);
+      zenHoldTimer = setInterval(() => {
+        const elapsed = Date.now() - zenHoldStart;
+        const pct = Math.min(100, (elapsed / 3000) * 100);
+        if (zenExitFill) zenExitFill.style.width = `${pct}%`;
+        const remainSec = Math.max(0, (3 - elapsed / 1000)).toFixed(1);
+        if (zenExitLabel) zenExitLabel.textContent = `Hold (${remainSec}s)...`;
+
+        if (elapsed >= 3000) {
+          clearInterval(zenHoldTimer);
+          triggerZenEmergencyExit();
+        }
+      }, 50);
+    }
+
+    function cancelZenHold() {
+      clearInterval(zenHoldTimer);
+      if (zenExitFill) zenExitFill.style.width = '0%';
+      if (zenExitLabel) zenExitLabel.textContent = 'Hold to Exit (3s)';
+    }
+
+    async function triggerZenEmergencyExit() {
+      cancelZenHold();
+      exitZenMode();
+
+      if (!activeSessionId) return;
+
+      const elapsedSec = sessionStartTime ? Math.floor((Date.now() - sessionStartTime) / 1000) : 0;
+      // Floor requirement: 10 minutes (600s)
+      if (elapsedSec < 600) {
+        try {
+          const res = await api('POST', `/sessions/${activeSessionId}/emergency-abort`);
+          toast(`Intentional distraction logged. Streak broken due to early exit (${Math.floor(elapsedSec / 60)}m < 10m floor).`, 'error');
+          resetHUD();
+          loadStats();
+          loadStreakBadge();
+        } catch (err) {
+          toast('Emergency abort error: ' + err.message, 'error');
+          resetHUD();
+        }
+      } else {
+        toast('10-minute floor met. Exiting Zen mode.', 'info');
+      }
+    }
+
+    if (zenExitBtn) {
+      zenExitBtn.addEventListener('mousedown', startZenHold);
+      zenExitBtn.addEventListener('touchstart', startZenHold, { passive: false });
+      zenExitBtn.addEventListener('mouseup', cancelZenHold);
+      zenExitBtn.addEventListener('mouseleave', cancelZenHold);
+      zenExitBtn.addEventListener('touchend', cancelZenHold);
+      zenExitBtn.addEventListener('touchcancel', cancelZenHold);
+    }
+
+
+    // ---------------------------------------------------------------
+    // 3. Circadian Resistance Heatmap (7x24 Punch-Card Grid)
+    // ---------------------------------------------------------------
+    async function loadCircadianHeatmap() {
+      try {
+        const res = await api('GET', '/reports/circadian-matrix?days=14');
+        renderCircadianHeatmap(res);
+      } catch (err) {
+        console.warn('Failed to load circadian matrix:', err);
+      }
+    }
+
+    function renderCircadianHeatmap(data) {
+      const rowsContainer = document.getElementById('circadian-heatmap-rows');
+      if (!rowsContainer || !data || !data.matrix) return;
+
+      const days = data.days || ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+      const matrix = data.matrix;
+
+      rowsContainer.innerHTML = days.map((dayName, dIdx) => {
+        const rowData = matrix[dIdx] || [];
+        const cellsHtml = rowData.map((val, hIdx) => {
+          let cellClass = 'bg-zinc-900 border-zinc-850 hover:border-zinc-500';
+          if (val > 0.6) {
+            cellClass = 'bg-rose-600/80 border-rose-500/80 hover:bg-rose-500 shadow-sm shadow-rose-900/40';
+          } else if (val > 0.3) {
+            cellClass = 'bg-amber-600/60 border-amber-500/60 hover:bg-amber-500 shadow-sm shadow-amber-900/40';
+          } else if (val > 0.0) {
+            cellClass = 'bg-zinc-800 border-zinc-700 hover:bg-zinc-700';
+          }
+
+          const hourLabel = String(hIdx).padStart(2, '0') + ':00';
+          const infoStr = `[${dayName} ${hourLabel}] Resistance: ${val.toFixed(2)}`;
+
+          return `<div onmouseenter="showCircadianTooltip('${infoStr}')" onclick="showCircadianTooltip('${infoStr}')"
+            class="h-6 rounded-sm border cursor-pointer transition-colors duration-150 ${cellClass}" title="${infoStr}"></div>`;
+        }).join('');
+
+        return `
+          <div class="grid grid-cols-[54px_repeat(24,_1fr)] gap-1 items-center">
+            <span class="text-[10px] font-mono text-zinc-400 font-semibold pl-1">${dayName}</span>
+            ${cellsHtml}
+          </div>
+        `;
+      }).join('');
+    }
+
+    function showCircadianTooltip(text) {
+      const tip = document.getElementById('circadian-slot-tooltip');
+      if (tip) tip.textContent = text;
+    }
+
+
+    // ---------------------------------------------------------------
+    // 4. Streak Counter & Strict Stakes Engine
+    // ---------------------------------------------------------------
+    async function loadStreakBadge() {
+      try {
+        const res = await api('GET', '/reports/streak');
+        const countLabel = document.getElementById('streak-count-label');
+        const badge = document.getElementById('streak-badge');
+        if (countLabel) {
+          countLabel.textContent = `STREAK: ${res.current_streak_days} DAYS (${res.today_verified_blocks}/${res.daily_floor_target})`;
+        }
+        if (badge) {
+          if (res.floor_met_today) {
+            badge.className = 'px-3 py-1.5 rounded-xl bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/40 text-xs flex items-center gap-1.5 font-mono text-emerald-300 shadow-sm cursor-pointer transition';
+          } else if (res.current_streak_days > 0) {
+            badge.className = 'px-3 py-1.5 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/40 text-xs flex items-center gap-1.5 font-mono text-amber-300 shadow-sm cursor-pointer transition';
+          } else {
+            badge.className = 'px-3 py-1.5 rounded-xl bg-zinc-900 hover:bg-zinc-800 border border-zinc-700 text-xs flex items-center gap-1.5 font-mono text-zinc-400 shadow-sm cursor-pointer transition';
+          }
+        }
+      } catch (err) {
+        console.warn('Failed to load streak badge:', err);
+      }
+    }
+
+    async function loadStreakReport() {
+      try {
+        const res = await api('GET', '/reports/streak');
+        toast(`Strict Streak: ${res.current_streak_days} days (Longest: ${res.longest_streak_days}d). Verified today: ${res.today_verified_blocks}/${res.daily_floor_target} blocks.`, res.floor_met_today ? 'success' : 'info');
+      } catch (err) {
+        toast('Streak load error: ' + err.message, 'error');
+      }
+    }
+
+
+    // ---------------------------------------------------------------
+    // 5. Parked Thoughts Distraction Scratchpad
+    // ---------------------------------------------------------------
+    function openParkedThoughtModal() {
+      const modal = document.getElementById('modal-parked-thoughts');
+      if (modal) modal.classList.remove('hidden');
+      const input = document.getElementById('parked-thought-input');
+      if (input) {
+        input.value = '';
+        setTimeout(() => input.focus(), 50);
+      }
+    }
+    window.openParkedThoughtModal = openParkedThoughtModal;
+
+    async function handleParkThoughtSubmit(e) {
+      if (e && typeof e.preventDefault === 'function') e.preventDefault();
+      const input = document.getElementById('parked-thought-input');
+      const urgencySelect = document.getElementById('parked-thought-urgency');
+      const content = input ? input.value.trim() : '';
+      const urgency = urgencySelect ? urgencySelect.value : 'low';
+
+      if (!content) return;
+
+      closeModal('modal-parked-thoughts');
+      if (input) input.value = '';
+
+      // Subtle instant feedback without breaking flow
+      toast('Thought parked. Stay locked in.', 'success');
+
+      try {
+        const sessId = activeSessionId || 'active';
+        await api('POST', `/sessions/${sessId}/park-thought`, {
+          content,
+          urgency,
+          task_id: activeTaskId || undefined
+        });
+      } catch (err) {
+        console.warn('Failed saving parked thought:', err);
+      }
+    }
+
+    async function loadSessionParkedThoughts(sessionId) {
+      const container = document.getElementById('viva-parked-thoughts-container');
+      const list = document.getElementById('viva-parked-thoughts-list');
+      const countEl = document.getElementById('viva-parked-count');
+      if (!list) return;
+
+      try {
+        const thoughts = await api('GET', `/sessions/${sessionId}/parked-thoughts`);
+        if (Array.isArray(thoughts) && thoughts.length > 0) {
+          if (container) container.classList.remove('hidden');
+          if (countEl) countEl.textContent = `${thoughts.length} item${thoughts.length === 1 ? '' : 's'}`;
+
+          list.innerHTML = thoughts.map(t => {
+            const urgBadge = {
+              high: 'bg-rose-500/20 text-rose-300 border-rose-500/40',
+              medium: 'bg-amber-500/20 text-amber-300 border-amber-500/40',
+              low: 'bg-zinc-800 text-zinc-400 border-zinc-700'
+            }[t.urgency] || 'bg-zinc-800 text-zinc-400 border-zinc-700';
+
+            return `
+              <div class="p-2 rounded-lg bg-zinc-900 border border-zinc-800 flex items-center justify-between gap-2">
+                <span class="text-zinc-200 select-all font-mono">${escapeHtml(t.content)}</span>
+                <span class="text-[10px] uppercase font-mono px-1.5 py-0.5 rounded border ${urgBadge}">${escapeHtml(t.urgency)}</span>
+              </div>
+            `;
+          }).join('');
+        } else {
+          if (container) container.classList.add('hidden');
+        }
+      } catch (err) {
+        console.warn('Failed loading parked thoughts for session:', err);
+      }
+    }
+
+
+    // ---------------------------------------------------------------
+    // Global Keyboard Shortcuts (F = Zen Mode, Alt+D = Park Thought)
+    // ---------------------------------------------------------------
+    window.addEventListener('keydown', (e) => {
+      const activeTag = document.activeElement ? document.activeElement.tagName.toLowerCase() : '';
+      const isInput = activeTag === 'input' || activeTag === 'textarea' || activeTag === 'select';
+
+      // Alt + D: Park Fleeting Thought
+      if (e.altKey && (e.key === 'd' || e.key === 'D')) {
+        e.preventDefault();
+        openParkedThoughtModal();
+        return;
+      }
+
+      // F Key: Toggle Zen Kiosk Mode (when active session running and not in input)
+      if (!isInput && (e.key === 'f' || e.key === 'F')) {
+        if (activeSessionId) {
+          e.preventDefault();
+          toggleZenMode();
+        }
+      }
+
+      // Escape: Exit Zen Mode
+      if (e.key === 'Escape' && isZenMode) {
+        exitZenMode();
+      }
+    });
+
+
+    // ---------------------------------------------------------------
     // Modal utils
     // ---------------------------------------------------------------
     function closeModal(id) {
@@ -2365,7 +4222,7 @@
     }
 
     // Close on backdrop click
-    ['modal-excuse', 'modal-viva', 'modal-auth', 'modal-micro-start', 'modal-mobile-connect'].forEach(id => {
+    ['modal-excuse', 'modal-viva', 'modal-auth', 'modal-micro-start', 'modal-mobile-connect', 'modal-parked-thoughts'].forEach(id => {
       const modal = document.getElementById(id);
       if (modal) {
         modal.addEventListener('click', (e) => {

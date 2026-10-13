@@ -210,6 +210,14 @@ def get_active_session(db: Session, user_id: Optional[str] = None) -> Optional[m
     return query.order_by(models.FocusSession.started_at.desc()).first()
 
 
+def get_session(db: Session, session_id: str, user_id: Optional[str] = None) -> Optional[models.FocusSession]:
+    """Returns a focus session by ID, scoped by user_id if supplied."""
+    query = db.query(models.FocusSession).filter(models.FocusSession.id == session_id)
+    if user_id:
+        query = query.filter(models.FocusSession.user_id == user_id)
+    return query.first()
+
+
 def flag_paste_on_session(
     db: Session, session_id: str, user_id: Optional[str] = None
 ) -> None:

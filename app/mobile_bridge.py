@@ -170,3 +170,54 @@ def dispatch_tunnel_online(tunnel_url: str, topic: str | None = None) -> bool:
             logger.warning("⚠️ Failed to dispatch tunnel online alert to %s: %s", t, e)
 
     return success
+
+
+def dispatch_eod_scorecard(
+    topic: str,
+    score: float,
+    status_grade: str,
+    verified_minutes: float,
+    target_minutes: int,
+    completed_blocks: int,
+    distractions: int,
+    paste_bursts: int,
+    dashboard_url: Optional[str] = None,
+) -> bool:
+    """
+    Dispatches nightly EOD scorecard push to the user's configured ntfy_topic:
+    - Title: "📊 EOD Scorecard: {score}% ({status_grade})"
+    - Message: "Verified: {verified_minutes}m / {target_minutes}m | Blocks: {completed_blocks} | Distractions: {distractions} | Paste Flags: {paste_bursts}"
+    - Headers: Click: {dashboard_url}/#analytics, Priority: 4 (if score < 60) else 3.
+    """
+    target_topic = (topic or NTFY_TOPIC or "focus_engine_ntfy").strip()
+    title = f"📊 EOD Scorecard: {score}% ({status_grade})"
+    message = (
+        f"Verified: {verified_minutes}m / {target_minutes}m | "
+        f"Blocks: {completed_blocks} | "
+        f"Distractions: {distractions} | "
+        f"Paste Flags: {paste_bursts}"
+    )
+    priority = 4 if score < 60.0 else 3
+    click_url = f"{dashboard_url.rstrip('/')}/#analytics" if dashboard_url else "http://127.0.0.1:8000/#analytics"
+
+    payload = {
+        "topic": target_topic,
+        "title": title,
+        "message": message,
+        "priority": priority,
+        "tags": ["chart_with_upwards_trend", "bar_chart"],
+        "click": click_url,
+    }
+    try:
+        req = urllib.request.Request(
+            f"{NTFY_SERVER}",
+            data=json.dumps(payload).encode("utf-8"),
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        with urllib.request.urlopen(req, timeout=8) as response:
+            logger.info("📊 Dispatched EOD scorecard to %s/%s (status %d)", NTFY_SERVER, target_topic, response.status)
+            return True
+    except Exception as e:
+        logger.warning("⚠️ Failed to dispatch EOD scorecard to %s: %s", target_topic, e)
+        return False

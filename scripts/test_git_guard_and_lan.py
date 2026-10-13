@@ -238,8 +238,8 @@ def run_tests():
     with open(ROOT / "static" / "index.html", "r", encoding="utf-8") as f:
         html = f.read()
     assert "footer-connection-mode-badge" in html, "Missing footer connection badge in index.html"
-    assert "modal-mobile-connect" in html, "Missing modal-mobile-connect in index.html"
-    assert "Show Mobile Connect URLs" in html, "Missing Show Mobile Connect URLs button in index.html"
+    assert "Mobile Connect" in html, "Missing Mobile Connect modal in index.html"
+    assert "openMobileConnectModal" in html, "Missing openMobileConnectModal function in index.html"
     assert "detectConnectionMode" in html, "Missing detectConnectionMode JS function in index.html"
     print("  ✓ Frontend HUD elements verified in static/index.html")
 

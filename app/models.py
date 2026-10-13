@@ -12,6 +12,7 @@ from sqlalchemy import (
     Column,
     DateTime,
     Enum,
+    Float,
     ForeignKey,
     Integer,
     JSON,
@@ -122,6 +123,9 @@ class FocusSession(Base):
     distraction_logs = relationship(
         "DistractionLog", back_populates="session", cascade="all, delete"
     )
+    parked_thoughts = relationship(
+        "ParkedThought", back_populates="session", cascade="all, delete"
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -143,6 +147,28 @@ class DistractionLog(Base):
     )
 
     session = relationship("FocusSession", back_populates="distraction_logs")
+
+
+# ---------------------------------------------------------------------------
+# ParkedThought (Distraction Scratchpad)
+# ---------------------------------------------------------------------------
+class ParkedThought(Base):
+    __tablename__ = "parked_thoughts"
+
+    id = Column(String(36), primary_key=True, default=_new_uuid)
+    user_id = Column(String(64), nullable=False, index=True, default="dev-user")
+    session_id = Column(
+        String(36), ForeignKey("focus_sessions.id", ondelete="CASCADE"), nullable=True
+    )
+    task_id = Column(
+        String(36), ForeignKey("tasks.id", ondelete="SET NULL"), nullable=True
+    )
+    content = Column(Text, nullable=False)
+    urgency = Column(String(16), nullable=False, default="low")  # low | medium | high
+    processed = Column(Boolean, nullable=False, default=False)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=_utcnow)
+
+    session = relationship("FocusSession", back_populates="parked_thoughts")
 
 
 # ---------------------------------------------------------------------------
@@ -172,8 +198,40 @@ class UserSetting(Base):
 
     id = Column(String(36), primary_key=True, default=_new_uuid)
     user_id = Column(String(64), nullable=False, index=True, default="dev-user")
+    
+    # Study Tracks & Verification
     tracks = Column(JSON, nullable=False, default=list)
-    ntfy_topic = Column(String(128), nullable=True)
+    custom_tracks = Column(JSON, nullable=True, default=list)
+    workspace_path = Column(String(255), nullable=False, default=r"D:\code\workspace")
+    viva_strictness = Column(String(32), nullable=False, default="standard")
+    auto_fail_paste_bursts = Column(Boolean, nullable=False, default=True)
+
+    # Connectivity & Alerts
+    ntfy_topic = Column(String(128), nullable=False, default="focus_engine_ntfy")
+    peripheral_boundary_enforced = Column(Boolean, nullable=False, default=True)
+    auto_clear_samsung_dnd = Column(Boolean, nullable=False, default=True)
     peripheral_boundary_meters = Column(Integer, nullable=False, default=3)
+
+    # Session Mechanics
+    default_min_minutes = Column(Integer, nullable=False, default=25)
+    default_target_minutes = Column(Integer, nullable=False, default=60)
+    default_stretch_minutes = Column(Integer, nullable=False, default=90)
+    enable_micro_start_gate = Column(Boolean, nullable=False, default=True)
+    emergency_bail_hold_seconds = Column(Integer, nullable=False, default=3)
+    penalize_early_abort_streak = Column(Boolean, nullable=False, default=True)
+
+    # HUD & Audio
+    default_soundscape = Column(String(32), nullable=False, default="off")
+    default_volume = Column(Float, nullable=False, default=0.7)
+    auto_zen_mode = Column(Boolean, nullable=False, default=False)
+    blind_focus_mode = Column(Boolean, nullable=False, default=False)
+
+    # Scorecard Floor & Streaks
+    daily_target_minutes = Column(Integer, nullable=False, default=180)
+    current_streak_days = Column(Integer, nullable=False, default=0)
+    longest_streak_days = Column(Integer, nullable=False, default=0)
+    daily_floor_target = Column(Integer, nullable=False, default=2)
+
     created_at = Column(DateTime(timezone=True), nullable=False, default=_utcnow)
     updated_at = Column(DateTime(timezone=True), nullable=False, default=_utcnow, onupdate=_utcnow)
+

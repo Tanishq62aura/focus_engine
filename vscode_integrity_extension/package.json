@@ -30,6 +30,11 @@
           "type": "boolean",
           "default": true,
           "description": "Enable or disable the integrity watchdog."
+        },
+        "focusEngine.authToken": {
+          "type": "string",
+          "default": "",
+          "description": "JWT Bearer token for authenticating with Focus Engine API."
         }
       }
     },

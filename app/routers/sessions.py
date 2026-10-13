@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import logging
 import re
+from datetime import datetime, timezone
 from typing import Optional
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
@@ -84,6 +85,31 @@ def end_session(
     task = crud.get_task(db, session.task_id, user_id=current_user)
     task_title = task.title if task else "Focus Session"
     background_tasks.add_task(mobile_bridge.dispatch_session_end, task_title)
+    return session
+
+
+@router.get("/active", response_model=schemas.SessionRead)
+def get_active_session_endpoint(
+    db: Session = Depends(get_db),
+    current_user: str = Depends(get_current_user),
+):
+    """Retrieves current user's active focus session."""
+    active = crud.get_active_session(db, user_id=current_user)
+    if not active:
+        raise HTTPException(status_code=404, detail="No active focus session found")
+    return active
+
+
+@router.get("/{session_id}", response_model=schemas.SessionRead)
+def get_session_endpoint(
+    session_id: str,
+    db: Session = Depends(get_db),
+    current_user: str = Depends(get_current_user),
+):
+    """Retrieves focus session by ID."""
+    session = crud.get_session(db, session_id, user_id=current_user)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found or unauthorized")
     return session
 
 
@@ -228,29 +254,33 @@ def submit_viva(
     db: Session = Depends(get_db),
     current_user: str = Depends(get_current_user),
 ):
-    session = db.query(models.FocusSession).filter(
-        models.FocusSession.id == session_id,
-        models.FocusSession.user_id == current_user,
-    ).first()
+    session = (
+        db.query(models.FocusSession)
+        .filter(models.FocusSession.id == session_id, models.FocusSession.user_id == current_user)
+        .first()
+    )
     if not session:
         raise HTTPException(status_code=404, detail="Session not found or unauthorized")
+    if not session.viva_question:
+        raise HTTPException(status_code=400, detail="No viva question set. Call /request-viva first.")
 
     task = crud.get_task(db, session.task_id, user_id=current_user)
     category = task.category if task else "coding"
+    ans_text = data.get_answer() if hasattr(data, "get_answer") else (getattr(data, "answer", None) or getattr(data, "user_answer", ""))
 
-    status_str, score, feedback = evaluate_viva_answer(
-        question=session.viva_question or "",
-        user_answer=data.user_answer,
+    passed, feedback = evaluate_viva_answer(
+        question=session.viva_question,
+        answer=ans_text,
+        proof_text=session.proof_text or "",
         category=category,
     )
-    crud.set_viva_result(db, session_id, status_str, data.user_answer, feedback, score, user_id=current_user)
-
+    updated = crud.resolve_viva(db, session_id, ans_text, feedback, passed, user_id=current_user)
     return schemas.VivaResult(
         session_id=session_id,
-        verification_status=status_str,
-        viva_question=session.viva_question,
-        viva_feedback=feedback,
-        viva_score=score,
+        verification_status=updated.verification_status if updated else "unverified",
+        viva_question=updated.viva_question if updated else None,
+        viva_feedback=updated.viva_feedback if updated else None,
+        verified=passed,
     )
 
 
@@ -277,3 +307,146 @@ def submit_active_viva(
         session = active
 
     return submit_viva(session.id, data, db, current_user)
+
+
+# ---------------------------------------------------------------------------
+# Parked Thoughts (Distraction Scratchpad)
+# ---------------------------------------------------------------------------
+@router.post("/{session_id}/park-thought", response_model=schemas.ParkedThoughtRead)
+def park_thought(
+    session_id: str,
+    data: schemas.ParkedThoughtCreate,
+    db: Session = Depends(get_db),
+    current_user: str = Depends(get_current_user),
+):
+    """
+    Instantly stores a fleeting thought / distraction to allow immediate refocusing.
+    Associates the thought with the active or specified session and its underlying task.
+    """
+    actual_session = None
+    if session_id == "active":
+        actual_session = crud.get_active_session(db, user_id=current_user)
+    else:
+        actual_session = (
+            db.query(models.FocusSession)
+            .filter(
+                models.FocusSession.id == session_id,
+                models.FocusSession.user_id == current_user,
+            )
+            .first()
+        )
+
+    task_id = actual_session.task_id if actual_session else data.task_id
+    sess_id = actual_session.id if actual_session else (None if session_id == "active" else session_id)
+
+    thought = models.ParkedThought(
+        user_id=current_user,
+        session_id=sess_id,
+        task_id=task_id,
+        content=data.content.strip(),
+        urgency=data.urgency,
+        processed=False,
+    )
+    db.add(thought)
+    db.commit()
+    db.refresh(thought)
+    logger.info("🧠 Thought parked for user %s | session=%s | urgency=%s", current_user, sess_id, data.urgency)
+    return thought
+
+
+@router.get("/{session_id}/parked-thoughts", response_model=list[schemas.ParkedThoughtRead])
+def get_parked_thoughts(
+    session_id: str,
+    db: Session = Depends(get_db),
+    current_user: str = Depends(get_current_user),
+):
+    """
+    Fetches parked thoughts for a session (or all recent thoughts if session_id is 'all').
+    """
+    query = db.query(models.ParkedThought).filter(models.ParkedThought.user_id == current_user)
+    if session_id == "active":
+        active = crud.get_active_session(db, user_id=current_user)
+        if not active:
+            return []
+        query = query.filter(models.ParkedThought.session_id == active.id)
+    elif session_id != "all":
+        query = query.filter(models.ParkedThought.session_id == session_id)
+
+    return query.order_by(models.ParkedThought.created_at.desc()).all()
+
+
+# ---------------------------------------------------------------------------
+# Zen Kiosk Emergency Exit / Strict Stakes Abort
+# ---------------------------------------------------------------------------
+@router.post("/{session_id}/emergency-abort")
+def emergency_abort_session(
+    session_id: str,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+    current_user: str = Depends(get_current_user),
+):
+    """
+    Emergency exit handler from Zen Kiosk Mode:
+    - Logs an intentional distraction audit.
+    - If aborted before the minimum floor (<10 minutes or before completion), triggers a streak break.
+    - Ends the session with verification_status='FAIL'.
+    """
+    if session_id == "active":
+        session = crud.get_active_session(db, user_id=current_user)
+    else:
+        session = (
+            db.query(models.FocusSession)
+            .filter(
+                models.FocusSession.id == session_id,
+                models.FocusSession.user_id == current_user,
+            )
+            .first()
+        )
+
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found or unauthorized")
+
+    # 1. Log intentional distraction audit
+    distraction = models.DistractionLog(
+        user_id=current_user,
+        session_id=session.id,
+        interruption_type="other",
+    )
+    db.add(distraction)
+
+    # 2. Check if aborted before minimum floor (e.g., < 10 mins / 600s)
+    now = datetime.now(timezone.utc)
+    duration_sec = 0
+    if session.started_at:
+        s_start = session.started_at
+        if s_start.tzinfo is None:
+            s_start = s_start.replace(tzinfo=timezone.utc)
+        duration_sec = int((now - s_start).total_seconds())
+    session.actual_focused_seconds = duration_sec
+    session.ended_at = now
+    session.verification_status = "rejected"
+    session.notes = (session.notes or "") + " [ZEN EMERGENCY ABORT]"
+
+    streak_broken = False
+    # If duration is under 10 minutes (600s), break streak
+    if duration_sec < 600:
+        setting = db.query(models.UserSetting).filter(models.UserSetting.user_id == current_user).first()
+        if setting and setting.current_streak_days > 0:
+            logger.warning("💥 Streak broken due to early Zen emergency abort (%ds < 600s)", duration_sec)
+            setting.current_streak_days = 0
+            streak_broken = True
+
+    db.commit()
+
+    task = crud.get_task(db, session.task_id, user_id=current_user)
+    task_title = task.title if task else "Focus Session"
+    background_tasks.add_task(mobile_bridge.dispatch_session_end, f"ABORTED: {task_title}")
+
+    return {
+        "success": True,
+        "session_id": session.id,
+        "duration_seconds": duration_sec,
+        "streak_broken": streak_broken,
+        "message": "Session emergency-aborted. Intentional distraction audit logged.",
+    }
+

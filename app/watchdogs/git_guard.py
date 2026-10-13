@@ -97,25 +97,38 @@ def _scan_untracked_files(root_path: Path, threshold: float) -> tuple[int, int, 
     return files_added, lines_added, untracked_paths
 
 
+DANGEROUS_SYSTEM_ROOTS: Set[str] = {
+    "/", "\\", "c:\\", "c:/", "/etc", "/bin", "/usr", "/var",
+    "c:\\windows", "c:\\windows\\system32", "c:\\program files", "c:\\program files (x86)"
+}
+
+
 def _scan_filesystem_fallback(target_dir: Path, since_ts: Optional[datetime]) -> Dict[str, Any]:
     """
     Fallback recursive directory scanning using os.scandir when git is clean or unavailable.
     Checks st_mtime >= since_timestamp for target file extensions.
+    Guarded with depth and count bounds to prevent DoS.
     """
     files_modified = 0
     insertions = 0
     deletions = 0
     modified_files: List[str] = []
     threshold = since_ts.timestamp() if since_ts else 0.0
+    scanned_count = 0
 
-    def _walk_dir(current_dir: Path):
-        nonlocal files_modified, insertions
+    def _walk_dir(current_dir: Path, depth: int = 0):
+        nonlocal files_modified, insertions, scanned_count
+        if depth > 5 or scanned_count >= 500 or files_modified >= 100:
+            return
         try:
             with os.scandir(current_dir) as entries:
                 for entry in entries:
+                    scanned_count += 1
+                    if scanned_count >= 500 or files_modified >= 100:
+                        break
                     if entry.is_dir(follow_symlinks=False):
-                        if entry.name not in IGNORED_DIRS:
-                            _walk_dir(Path(entry.path))
+                        if entry.name not in IGNORED_DIRS and not entry.name.startswith("."):
+                            _walk_dir(Path(entry.path), depth + 1)
                     elif entry.is_file(follow_symlinks=False):
                         ext = Path(entry.name).suffix.lower()
                         if ext in TARGET_EXTENSIONS:
@@ -127,7 +140,13 @@ def _scan_filesystem_fallback(target_dir: Path, since_ts: Optional[datetime]) ->
                                     modified_files.append(rel)
                                     try:
                                         with open(entry.path, "r", encoding="utf-8", errors="ignore") as f:
-                                            insertions += sum(1 for _ in f)
+                                            # Read at most first 1000 lines to prevent memory exhaustion on giant files
+                                            line_cnt = 0
+                                            for _ in f:
+                                                line_cnt += 1
+                                                if line_cnt >= 1000:
+                                                    break
+                                            insertions += line_cnt
                                     except Exception:
                                         insertions += 10
                             except Exception:
@@ -135,7 +154,7 @@ def _scan_filesystem_fallback(target_dir: Path, since_ts: Optional[datetime]) ->
         except Exception:
             pass
 
-    _walk_dir(target_dir)
+    _walk_dir(target_dir, 0)
 
     has_activity = files_modified > 0
     summary = (
@@ -165,15 +184,27 @@ def check_workspace_activity(
     If git returns clean or target is not a repo, scans the workspace recursively
     using os.scandir for files modified (st_mtime >= since_timestamp) with extensions
     .py, .ts, .js, .cpp, .java, .go, .rs, .md.
-
-    Returns:
-      {
-          "has_activity": bool,
-          "files_changed_count": int,
-          "summary": str,  # Raw git diff stat or list of modified file paths
-      }
     """
+    if not target_dir or not str(target_dir).strip():
+        target_dir = "."
+
     root_path = Path(target_dir).resolve()
+
+    # Security boundary check: disallow system root drives and critical system directories
+    is_drive_root = (root_path == root_path.parent) or (len(root_path.parts) <= 1)
+    normalized_path = str(root_path).lower().rstrip("/\\")
+    is_system_dir = normalized_path in DANGEROUS_SYSTEM_ROOTS or any(
+        normalized_path.startswith(d) for d in ("c:\\windows", "c:\\program files", "/etc", "/var", "/bin", "/usr")
+    )
+    if is_drive_root or is_system_dir or not root_path.exists() or not root_path.is_dir():
+        logger.warning("Blocked workspace inspection of invalid or restricted path: %s", root_path)
+        return {
+            "has_activity": False,
+            "files_changed_count": 0,
+            "summary": "Workspace path is invalid or restricted.",
+            "files": [],
+        }
+
     since_ts = _normalize_timestamp(since_timestamp)
     threshold = since_ts.timestamp() if since_ts else 0.0
 

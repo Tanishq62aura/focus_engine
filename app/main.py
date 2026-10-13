@@ -19,7 +19,7 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app import crud, mobile_bridge, models, schemas
-from app.routers import auth, settings, support
+from app.routers import auth, reports, sessions, settings, support
 from app.auth import (
     AUTH_DISABLED,
     DEV_USER_ID,
@@ -125,6 +125,24 @@ def startup_banner():
     logger.info("=" * 60)
 
 
+@app.on_event("startup")
+def startup_scheduler():
+    try:
+        from app.schedulers.scorecard_job import start_scheduler
+        start_scheduler()
+    except Exception as e:
+        logger.warning("Could not initialize background scheduler: %s", e)
+
+
+@app.on_event("shutdown")
+def shutdown_scheduler():
+    try:
+        from app.schedulers.scorecard_job import stop_scheduler
+        stop_scheduler()
+    except Exception as e:
+        pass
+
+
 # Mount static directory for frontend HUD & PWA assets
 _STATIC_DIR = Path(__file__).parent.parent / "static"
 if _STATIC_DIR.exists():
@@ -133,7 +151,11 @@ if _STATIC_DIR.exists():
 # Mount API routers
 app.include_router(auth.router, prefix="/api/auth", tags=["auth"])
 app.include_router(settings.router, prefix="/api/settings", tags=["settings"])
+app.include_router(settings.router, prefix="/settings", tags=["settings"])
 app.include_router(support.router, prefix="/api/support", tags=["support"])
+app.include_router(reports.router, prefix="/api", tags=["reports"])
+app.include_router(sessions.router, prefix="/api", tags=["sessions"])
+app.include_router(sessions.router, tags=["sessions"])
 
 
 # ---------------------------------------------------------------------------
@@ -187,10 +209,25 @@ def auth_status(credentials: Optional[HTTPAuthorizationCredentials] = Depends(be
         }
 
 
+DEV_MODE = os.getenv("DEV_MODE", "true").lower() in ("true", "1", "yes")
+
 @app.post("/auth/dev-token")
 def issue_dev_token():
     """Generates an authentic HS256 development JWT for local testing and dev mode."""
-    secret = SUPABASE_JWT_SECRET or "supabase-jwt-secret-njxlltvrcmqinrnhlpgh"
+    if not DEV_MODE and not AUTH_DISABLED:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Development bypass token is disabled in production.",
+        )
+    secret = SUPABASE_JWT_SECRET
+    if not secret:
+        if AUTH_DISABLED:
+            secret = "dev-insecure-local-only-key"
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="SUPABASE_JWT_SECRET must be configured in environment variables.",
+            )
     dev_user = DEV_USER_ID or "dev-user"
     if not jwt:
         raise HTTPException(status_code=500, detail="JWT library unavailable on server")

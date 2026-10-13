@@ -146,17 +146,22 @@ async function reportPasteEvent(apiUrl, fileName, charCount, lineNumber) {
 function httpPost(url, body) {
   return new Promise((resolve, reject) => {
     const parsed = new URL(url);
+    const cfg = getConfig();
     const lib = parsed.protocol === 'https:' ? https : http;
+    const headers = {
+      'Content-Type': 'application/json',
+      'Content-Length': Buffer.byteLength(body),
+      'User-Agent': 'FocusEngine-VSCode-Watchdog/1.0',
+    };
+    if (cfg.authToken) {
+      headers['Authorization'] = `Bearer ${cfg.authToken}`;
+    }
     const options = {
       hostname: parsed.hostname,
       port: parsed.port || (parsed.protocol === 'https:' ? 443 : 80),
       path: parsed.pathname + parsed.search,
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Content-Length': Buffer.byteLength(body),
-        'User-Agent': 'FocusEngine-VSCode-Watchdog/1.0',
-      },
+      headers: headers,
       timeout: 4000,
     };
     const req = lib.request(options, (res) => {
@@ -179,12 +184,20 @@ function httpPost(url, body) {
 function httpGet(url) {
   return new Promise((resolve, reject) => {
     const parsed = new URL(url);
+    const cfg = getConfig();
     const lib = parsed.protocol === 'https:' ? https : http;
+    const headers = {
+      'User-Agent': 'FocusEngine-VSCode-Watchdog/1.0',
+    };
+    if (cfg.authToken) {
+      headers['Authorization'] = `Bearer ${cfg.authToken}`;
+    }
     const options = {
       hostname: parsed.hostname,
       port: parsed.port || (parsed.protocol === 'https:' ? 443 : 80),
       path: parsed.pathname + parsed.search,
       method: 'GET',
+      headers: headers,
       timeout: 4000,
     };
     const req = lib.request(options, (res) => {
@@ -238,6 +251,7 @@ function getConfig() {
     apiUrl: (cfg.get('apiUrl') || 'http://127.0.0.1:8000').replace(/\/$/, ''),
     pasteThresholdChars: cfg.get('pasteThresholdChars') || 40,
     enabled: cfg.get('enabled') !== false,
+    authToken: (cfg.get('authToken') || process.env.FOCUS_AUTH_TOKEN || '').trim(),
   };
 }
 

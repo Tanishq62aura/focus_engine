@@ -26,5 +26,28 @@
       "sizes": "any",
       "type": "image/svg+xml"
     }
+  ],
+  "shortcuts": [
+    {
+      "name": "Active HUD",
+      "short_name": "HUD",
+      "description": "Open Focus Engine Active Timer",
+      "url": "/#hud",
+      "icons": [{ "src": "/static/icons/icon-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Park Thought",
+      "short_name": "Park",
+      "description": "Capture fleeting distraction or idea",
+      "url": "/#park",
+      "icons": [{ "src": "/static/icons/icon-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Scorecard & Analytics",
+      "short_name": "Metrics",
+      "description": "View daily execution scorecard",
+      "url": "/#analytics",
+      "icons": [{ "src": "/static/icons/icon-192.png", "sizes": "192x192" }]
+    }
   ]
 }

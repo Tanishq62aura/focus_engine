@@ -48,6 +48,27 @@ function _cleanTitle(rawTitle) {
 }
 
 // ---------------------------------------------------------------------------
+// Auth token helper
+// ---------------------------------------------------------------------------
+async function _getAuthToken() {
+  try {
+    if (typeof chrome !== 'undefined' && chrome.storage) {
+      if (chrome.storage.sync) {
+        const data = await chrome.storage.sync.get(['focusAuthToken', 'authToken']);
+        if (data?.focusAuthToken) return data.focusAuthToken;
+        if (data?.authToken) return data.authToken;
+      }
+      if (chrome.storage.local) {
+        const data = await chrome.storage.local.get(['focusAuthToken', 'authToken']);
+        if (data?.focusAuthToken) return data.focusAuthToken;
+        if (data?.authToken) return data.authToken;
+      }
+    }
+  } catch (_) {}
+  return null;
+}
+
+// ---------------------------------------------------------------------------
 // Core: fetch tab info and report
 // ---------------------------------------------------------------------------
 async function _reportTab(tabId) {
@@ -73,10 +94,16 @@ async function _reportTab(tabId) {
     url: url,
   };
 
+  const headers = { 'Content-Type': 'application/json' };
+  const token = await _getAuthToken();
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
+
   try {
     const res = await fetch(ENDPOINT, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: headers,
       body: JSON.stringify(payload),
       // Keep-alive not supported in SW fetch; signal abort after 5 s
       signal: AbortSignal.timeout(5000),

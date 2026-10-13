@@ -1,3 +1,7 @@
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
 import pytest
 from datetime import datetime, timezone, timedelta
 from unittest.mock import MagicMock
@@ -62,17 +66,22 @@ def test_friction_formula_upper_bound():
     assert score == 100.0
 
 def test_friction_api_endpoint():
-    client = TestClient(app)
-    res = client.get("/reports/friction-analysis?days=7")
-    assert res.status_code == 200
-    data = res.json()
-    assert "system_friction_index" in data
-    assert "categories" in data
-    assert "high_friction_culprit" in data
-    cat_keys = [c["category"] for c in data["categories"]]
-    assert "coding" in cat_keys
-    assert "tnp" in cat_keys
-    assert "theory" in cat_keys
+    from app.auth import get_current_user
+    app.dependency_overrides[get_current_user] = lambda: "dev-user"
+    try:
+        client = TestClient(app)
+        res = client.get("/reports/friction-analysis?days=7")
+        assert res.status_code == 200
+        data = res.json()
+        assert "system_friction_index" in data
+        assert "categories" in data
+        assert "high_friction_culprit" in data
+        cat_keys = [c["category"] for c in data["categories"]]
+        assert "coding" in cat_keys
+        assert "tnp" in cat_keys
+        assert "theory" in cat_keys
+    finally:
+        app.dependency_overrides.pop(get_current_user, None)
 
 def test_get_weekly_friction_report_aggregation():
     from app.database import SessionLocal

@@ -187,7 +187,21 @@ class VivaRequest(BaseModel):
 
 
 class VivaSubmit(BaseModel):
-    answer: str = Field(..., min_length=5)
+    answer: Optional[str] = None
+    user_answer: Optional[str] = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def normalize_viva_answer(cls, data):
+        if isinstance(data, dict):
+            val = data.get("answer") or data.get("user_answer")
+            if val:
+                data["answer"] = str(val)
+                data["user_answer"] = str(val)
+        return data
+
+    def get_answer(self) -> str:
+        return self.answer or self.user_answer or ""
 
 
 class VivaResult(BaseModel):
@@ -316,20 +330,89 @@ class TrackConfig(BaseModel):
     label: str = Field(..., min_length=1, max_length=128)
     default_duration_min: int = Field(default=60, ge=5, le=360)
     requires_code_watchdog: bool = Field(default=False)
-    friction_threshold: int = Field(default=65, ge=1, le=100)
+    friction_threshold: int = Field(default=3, ge=1, le=100)
     verification_prompt_override: Optional[str] = None
+    custom_viva_prompt: Optional[str] = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def sync_viva_prompt(cls, data):
+        if isinstance(data, dict):
+            if "custom_viva_prompt" in data and not data.get("verification_prompt_override"):
+                data["verification_prompt_override"] = data["custom_viva_prompt"]
+            elif "verification_prompt_override" in data and not data.get("custom_viva_prompt"):
+                data["custom_viva_prompt"] = data["verification_prompt_override"]
+        return data
 
 
-class UserSettingsRead(BaseModel):
-    user_id: str
-    tracks: list[TrackConfig]
-    ntfy_topic: Optional[str] = None
+class UserSettingsBase(BaseModel):
+    custom_tracks: list[TrackConfig] = Field(default_factory=list)
+    workspace_path: str = Field(default=r"D:\code\workspace", max_length=255)
+    viva_strictness: Literal["lenient", "standard", "adversarial"] = "standard"
+    auto_fail_paste_bursts: bool = True
+    ntfy_topic: str = Field(default="focus_engine_ntfy", pattern=r"^[a-zA-Z0-9_\-]{3,64}$")
+    peripheral_boundary_enforced: bool = True
+    auto_clear_samsung_dnd: bool = True
     peripheral_boundary_meters: int = 3
+    default_min_minutes: int = Field(default=25, ge=1, le=180)
+    default_target_minutes: int = Field(default=60, ge=5, le=360)
+    default_stretch_minutes: int = Field(default=90, ge=10, le=480)
+    enable_micro_start_gate: bool = True
+    emergency_bail_hold_seconds: int = Field(default=3, ge=1, le=30)
+    penalize_early_abort_streak: bool = True
+    default_soundscape: Literal["off", "brown_noise", "binaural_40hz", "rain"] = "off"
+    default_volume: float = Field(default=0.7, ge=0.0, le=1.0)
+    auto_zen_mode: bool = False
+    blind_focus_mode: bool = False
+    daily_target_minutes: int = Field(default=180, ge=1, le=1440)
 
 
 class UserSettingsUpdate(BaseModel):
-    ntfy_topic: Optional[str] = None
+    custom_tracks: Optional[list[TrackConfig]] = None
+    tracks: Optional[list[TrackConfig]] = None
+    workspace_path: Optional[str] = Field(default=None, max_length=255)
+    viva_strictness: Optional[Literal["lenient", "standard", "adversarial"]] = None
+    auto_fail_paste_bursts: Optional[bool] = None
+    ntfy_topic: Optional[str] = Field(default=None, pattern=r"^[a-zA-Z0-9_\-]{3,64}$")
+    peripheral_boundary_enforced: Optional[bool] = None
+    auto_clear_samsung_dnd: Optional[bool] = None
     peripheral_boundary_meters: Optional[int] = Field(default=None, ge=1, le=20)
+    default_min_minutes: Optional[int] = Field(default=None, ge=1, le=180)
+    default_target_minutes: Optional[int] = Field(default=None, ge=5, le=360)
+    default_stretch_minutes: Optional[int] = Field(default=None, ge=10, le=480)
+    enable_micro_start_gate: Optional[bool] = None
+    emergency_bail_hold_seconds: Optional[int] = Field(default=None, ge=1, le=30)
+    penalize_early_abort_streak: Optional[bool] = None
+    default_soundscape: Optional[Literal["off", "brown_noise", "binaural_40hz", "rain"]] = None
+    default_volume: Optional[float] = Field(default=None, ge=0.0, le=1.0)
+    auto_zen_mode: Optional[bool] = None
+    blind_focus_mode: Optional[bool] = None
+    daily_target_minutes: Optional[int] = Field(default=None, ge=1, le=1440)
+
+
+class UserSettingsResponse(UserSettingsBase):
+    user_id: str
+    tracks: list[TrackConfig] = Field(default_factory=list)
+    current_streak_days: int = 0
+    longest_streak_days: int = 0
+    daily_floor_target: int = 2
+
+    model_config = {"from_attributes": True}
+
+
+# UserSettingsRead alias for backward compatibility
+UserSettingsRead = UserSettingsResponse
+
+
+class DailyScorecardResponse(BaseModel):
+    date: str  # ISO date format: YYYY-MM-DD
+    score: float = Field(..., ge=0.0, le=100.0)
+    verified_minutes: float
+    target_minutes: int
+    completed_blocks: int
+    distractions: int
+    paste_bursts: int
+    status_grade: Literal["OPTIMAL", "SUBPAR", "CRITICAL_DRIFT"]
 
 
 # ---------------------------------------------------------------------------
@@ -358,4 +441,49 @@ class AuthResponse(BaseModel):
     token_type: str = "bearer"
     user_id: str
     email: str
+
+
+# ---------------------------------------------------------------------------
+# Parked Thoughts (Distraction Scratchpad)
+# ---------------------------------------------------------------------------
+class ParkedThoughtCreate(BaseModel):
+    content: str = Field(..., min_length=1, max_length=2000)
+    urgency: Literal["low", "medium", "high"] = "low"
+    task_id: Optional[str] = None
+
+
+class ParkedThoughtRead(BaseModel):
+    id: str
+    user_id: Optional[str] = None
+    session_id: Optional[str] = None
+    task_id: Optional[str] = None
+    content: str
+    urgency: str
+    processed: bool
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+# ---------------------------------------------------------------------------
+# Circadian Resistance Matrix & Streak Engine
+# ---------------------------------------------------------------------------
+class CircadianMatrixResponse(BaseModel):
+    days: list[str]  # e.g. ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+    hours: list[int]  # 0..23
+    matrix: list[list[float]]  # 7x24 float values (0.0 clean focus to 1.0 severe resistance)
+    total_sessions_analyzed: int
+    total_interruptions_analyzed: int
+    peak_friction_slot: Optional[dict[str, Any]] = None
+
+
+class StreakReport(BaseModel):
+    current_streak_days: int
+    longest_streak_days: int
+    daily_floor_target: int
+    today_verified_blocks: int
+    floor_met_today: bool
+    last_active_date: Optional[str] = None
+    status: str
+
 
