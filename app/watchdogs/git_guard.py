@@ -1,10 +1,11 @@
 """
 app/watchdogs/git_guard.py
-Local File/Git Proof Validation Watchdog for Focus Engine.
+Track-Scoped Local File/Git Proof Validation Watchdog for Focus Engine.
 
-Inspects workspace activity via Git diff, git log, and recursive filesystem scanning
-to verify that genuine coding or technical documentation occurred during a focus session
-before unlocking AI-powered Viva defense.
+Inspects workspace activity via Git diff, status, and recursive filesystem scanning
+to verify that genuine coding occurred during a coding focus session before unlocking
+AI-powered Viva defense.
+Non-coding tracks (theory, tp_aptitude, reading) skip file inspection.
 """
 from __future__ import annotations
 
@@ -19,9 +20,8 @@ from typing import Any, Dict, List, Optional, Set, Union
 logger = logging.getLogger("focus_engine.watchdogs.git_guard")
 
 TARGET_EXTENSIONS: Set[str] = {
-    ".py", ".ts", ".js", ".cpp", ".c", ".h", ".hpp",
-    ".md", ".txt", ".json", ".sql", ".html", ".css",
-    ".jsx", ".tsx", ".rs", ".go", ".java"
+    ".py", ".ts", ".js", ".cpp", ".java", ".go", ".rs", ".md",
+    ".c", ".h", ".hpp", ".txt", ".json", ".sql", ".html", ".css", ".jsx", ".tsx"
 }
 
 IGNORED_DIRS: Set[str] = {
@@ -99,7 +99,7 @@ def _scan_untracked_files(root_path: Path, threshold: float) -> tuple[int, int, 
 
 def _scan_filesystem_fallback(target_dir: Path, since_ts: Optional[datetime]) -> Dict[str, Any]:
     """
-    Fallback recursive directory scanning using os.scandir when git is unavailable.
+    Fallback recursive directory scanning using os.scandir when git is clean or unavailable.
     Checks st_mtime >= since_timestamp for target file extensions.
     """
     files_modified = 0
@@ -140,35 +140,37 @@ def _scan_filesystem_fallback(target_dir: Path, since_ts: Optional[datetime]) ->
     has_activity = files_modified > 0
     summary = (
         f"{files_modified} files modified (+{insertions} lines) in workspace: "
-        f"{', '.join(modified_files[:4])}"
+        f"{', '.join(modified_files[:5])}"
         if has_activity
-        else "No file modifications detected via filesystem scan"
+        else "Zero file modifications detected in your workspace during this coding block."
     )
 
     return {
+        "has_activity": has_activity,
+        "files_changed_count": files_modified,
         "files_modified": files_modified,
+        "summary": summary,
         "insertions": insertions,
         "deletions": deletions,
-        "has_activity": has_activity,
-        "summary": summary,
         "files": modified_files,
     }
 
 
-def verify_workspace_activity(
+def check_workspace_activity(
     target_dir: str = ".",
     since_timestamp: Optional[Union[datetime, str, float]] = None,
 ) -> Dict[str, Any]:
     """
-    Inspects git and file activity since the given timestamp.
+    Runs git diff --stat HEAD and git status --porcelain via subprocess.
+    If git returns clean or target is not a repo, scans the workspace recursively
+    using os.scandir for files modified (st_mtime >= since_timestamp) with extensions
+    .py, .ts, .js, .cpp, .java, .go, .rs, .md.
+
     Returns:
       {
-        "files_modified": int,
-        "insertions": int,
-        "deletions": int,
-        "has_activity": bool,
-        "summary": str,
-        "files": list[str]
+          "has_activity": bool,
+          "files_changed_count": int,
+          "summary": str,  # Raw git diff stat or list of modified file paths
       }
     """
     root_path = Path(target_dir).resolve()
@@ -189,7 +191,7 @@ def verify_workspace_activity(
         logger.debug("Git rev-parse check failed: %s", e)
 
     if not is_git_repo:
-        logger.info("Target directory %s is not a git repo; using filesystem fallback scanner.", root_path)
+        logger.info("Target directory %s is not a git repo; falling back to os.scandir.", root_path)
         return _scan_filesystem_fallback(root_path, since_ts)
 
     # 2. Query git activity
@@ -197,6 +199,7 @@ def verify_workspace_activity(
     insertions = 0
     deletions = 0
     modified_files: List[str] = []
+    raw_diff_parts: List[str] = []
 
     try:
         # A. Check if commits were made since session start
@@ -212,7 +215,6 @@ def verify_workspace_activity(
             )
             if log_proc.returncode == 0 and log_proc.stdout.strip():
                 has_recent_commits = True
-                # Find base commit before this session start
                 rev_proc = subprocess.run(
                     ["git", "-C", str(root_path), "rev-list", "-n", "1", f"--before={since_arg}", "HEAD"],
                     capture_output=True,
@@ -228,6 +230,7 @@ def verify_workspace_activity(
             diff_cmd.append(f"{base_commit}..HEAD" if base_commit else "HEAD")
             c_diff = subprocess.run(diff_cmd, capture_output=True, text=True, timeout=5)
             if c_diff.returncode == 0 and c_diff.stdout.strip():
+                raw_diff_parts.append(c_diff.stdout.strip())
                 lines = c_diff.stdout.strip().splitlines()
                 for line in lines[:-1]:
                     if "|" in line:
@@ -244,7 +247,6 @@ def verify_workspace_activity(
                     files_modified += len(modified_files)
 
         # B. Check uncommitted modified/staged files in working directory
-        # Inspect git status porcelain for modified (M) or staged (A/M/D) files
         st_proc = subprocess.run(
             ["git", "-C", str(root_path), "status", "--porcelain"],
             capture_output=True,
@@ -257,7 +259,6 @@ def verify_workspace_activity(
                     continue
                 code = line[:2]
                 rel_file = line[3:].strip().strip('"')
-                # Ignore untracked here, handled in _scan_untracked_files
                 if code.startswith("??"):
                     continue
                 ext = Path(rel_file).suffix.lower()
@@ -266,12 +267,10 @@ def verify_workspace_activity(
                     if full_p.is_file():
                         try:
                             mtime = full_p.stat().st_mtime
-                            # CRITICAL: Only count if modified AFTER session start
                             if mtime >= threshold:
                                 if rel_file not in modified_files:
                                     modified_files.append(rel_file)
                                     files_modified += 1
-                                    # Get diff stat for this specific file
                                     f_diff = subprocess.run(
                                         ["git", "-C", str(root_path), "diff", "--stat", "HEAD", "--", rel_file],
                                         capture_output=True,
@@ -279,6 +278,7 @@ def verify_workspace_activity(
                                         timeout=5,
                                     )
                                     if f_diff.returncode == 0 and f_diff.stdout.strip():
+                                        raw_diff_parts.append(f_diff.stdout.strip())
                                         m = DIFF_SUMMARY_REGEX.search(f_diff.stdout.strip().splitlines()[-1])
                                         if m:
                                             insertions += int(m.group(2) or 0)
@@ -296,25 +296,40 @@ def verify_workspace_activity(
             for uname in untracked_names:
                 if uname not in modified_files:
                     modified_files.append(uname)
+            raw_diff_parts.append(f"Untracked files: {', '.join(untracked_names)} (+{untracked_lines} lines)")
 
     except Exception as e:
         logger.error("Git inspection error: %s, falling back to directory scan.", e)
         return _scan_filesystem_fallback(root_path, since_ts)
 
+    # D. If git returns clean, fall back to recursive directory scan
+    if files_modified == 0 and len(modified_files) == 0:
+        fs_res = _scan_filesystem_fallback(root_path, since_ts)
+        if fs_res["has_activity"]:
+            return fs_res
+
     has_activity = bool(files_modified > 0 or insertions > 0 or deletions > 0 or len(modified_files) > 0)
     if has_activity:
-        summary = (
-            f"Git Activity: {files_modified} files modified (+{insertions}, -{deletions}) "
-            f"across: {', '.join(modified_files[:5])}"
-        )
+        if raw_diff_parts:
+            summary = "\n".join(raw_diff_parts)
+        else:
+            summary = (
+                f"Git Activity: {files_modified} files modified (+{insertions}, -{deletions}) "
+                f"across: {', '.join(modified_files[:5])}"
+            )
     else:
-        summary = "No git or file modifications detected in workspace during session"
+        summary = "Zero file modifications detected in your workspace during this coding block."
 
     return {
+        "has_activity": has_activity,
+        "files_changed_count": files_modified,
         "files_modified": files_modified,
+        "summary": summary,
         "insertions": insertions,
         "deletions": deletions,
-        "has_activity": has_activity,
-        "summary": summary,
         "files": modified_files,
     }
+
+
+# Backwards compatibility alias
+verify_workspace_activity = check_workspace_activity

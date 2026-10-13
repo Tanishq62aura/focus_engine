@@ -23,6 +23,7 @@ if hasattr(sys.stdout, "reconfigure"):
 
 BASE_URL = "http://127.0.0.1:8000"
 ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT))
 
 
 def make_request(method: str, path: str, data: dict = None, token: str = None) -> tuple[int, dict]:
@@ -64,7 +65,12 @@ def run_tests():
     print(f"  ✓ Authenticated as {user_id}")
 
     # 2. Test LAN & Tunnel network endpoints
-    print("\n[2/5] Testing Local IP Direct Connect & Cloudflare Tunnel endpoints...")
+    print("\n[2/7] Testing Local IP Direct Connect & Cloudflare Tunnel endpoints...")
+    from scripts.get_tunnel_url import get_local_lan_ip
+    discovered_ip = get_local_lan_ip()
+    print(f"  ✓ scripts.get_tunnel_url.get_local_lan_ip() -> {discovered_ip}")
+    assert discovered_ip and discovered_ip != "127.0.0.1", f"Expected active LAN IP, got {discovered_ip}"
+
     status, net_res = make_request("GET", "/api/network/endpoints")
     assert status == 200, f"Failed getting network endpoints: {net_res}"
     local_ip = net_res.get("local_ip")
@@ -73,7 +79,7 @@ def run_tests():
     print(f"  ✓ Active Local LAN IP:    {local_ip}")
     print(f"  ✓ Local Network URL:     {lan_url}")
     print(f"  ✓ Cloudflare Tunnel URL: {tunnel_url}")
-    assert local_ip and local_ip != "127.0.0.1", f"Expected active LAN IP, got {local_ip}"
+    assert local_ip == discovered_ip, f"Mismatch between endpoint IP {local_ip} and discovered {discovered_ip}"
     assert lan_url == f"http://{local_ip}:8000"
 
     # Query LAN URL directly to confirm LAN binding
@@ -129,7 +135,7 @@ def run_tests():
     print(f"  Response Detail: {req_res.get('detail')}")
 
     assert status == 400, f"Expected HTTP 400 rejection, but got status {status}: {req_res}"
-    assert "No code or notes modified in the workspace" in str(req_res.get("detail")), (
+    assert "Zero file modifications detected in your workspace during this coding block" in str(req_res.get("detail")), (
         f"Unexpected rejection detail: {req_res}"
     )
     print("  ✓ SUCCESS: Backend successfully blocked viva submission when zero files modified!")
@@ -145,8 +151,47 @@ def run_tests():
     assert status == 400, f"Expected HTTP 400 rejection on /complete, got {status}: {comp_res}"
     print("  ✓ SUCCESS: /complete endpoint also strictly blocked submission!")
 
-    # 5. TEST POSITIVE CASE: Touch/modify file -> Viva UNLOCKS with HTTP 200
-    print("\n[5/5] Testing Positive Proof Unlock (Modify workspace file)...")
+    # 5. TEST NON-CODING TRACK: Category != 'coding' -> skips file checks entirely
+    print("\n[5/7] Testing Non-Coding Track (theory/aptitude) bypasses git check...")
+    status, theory_task = make_request(
+        "POST",
+        "/tasks",
+        {
+            "title": f"Theory OS Notes Test {int(time.time())}",
+            "category": "theory",
+            "priority": 2,
+            "estimated_duration_min": 25,
+            "min_goal": 5,
+            "target_goal": 25,
+            "stretch_goal": 45,
+        },
+        token=token,
+    )
+    assert status == 201, f"Failed creating theory task: {theory_task}"
+    theory_task_id = theory_task["id"]
+
+    status, theory_sess = make_request(
+        "POST",
+        "/sessions/start",
+        {"task_id": theory_task_id, "is_five_min_intervention": False},
+        token=token,
+    )
+    assert status == 201, f"Failed starting theory session: {theory_sess}"
+    theory_sess_id = theory_sess["id"]
+
+    # Submit reflection notes for theory WITHOUT modifying any workspace files
+    theory_notes = "Read OS concepts: Process states (ready, running, waiting), context switching overhead, and PCB layout."
+    status, theory_viva = make_request(
+        "POST",
+        f"/sessions/{theory_sess_id}/request-viva",
+        {"proof_text": theory_notes},
+        token=token,
+    )
+    assert status == 200, f"Expected HTTP 200 for non-coding track without file edits, got {status}: {theory_viva}"
+    print("  ✓ SUCCESS: Non-coding track (theory) successfully bypassed git checks and generated viva question!")
+
+    # 6. TEST POSITIVE CASE: Touch/modify file -> Viva UNLOCKS with HTTP 200
+    print("\n[6/7] Testing Positive Proof Unlock (Modify workspace file)...")
     scratch_file = ROOT / "scratch_work_proof.py"
     try:
         # Write actual code to scratch_work_proof.py
@@ -184,6 +229,7 @@ def run_tests():
         if scratch_file.exists():
             scratch_file.unlink()
             print("  ✓ Cleaned up scratch test file.")
+
 
     # 6. Verify static frontend contains network elements
     print("\n[6/6] Verifying Frontend HUD (Connection mode indicator & Mobile Connect modal)...")

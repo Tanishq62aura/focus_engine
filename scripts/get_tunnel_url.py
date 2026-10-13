@@ -89,19 +89,20 @@ def dispatch_to_ntfy(tunnel_url: str, custom_topic: str | None = None) -> bool:
 import socket
 
 
-def get_local_ip() -> str:
+def get_local_lan_ip() -> str:
     """Extract active LAN IPv4 address for local network connectivity."""
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     try:
         s.connect(("8.8.8.8", 80))
-        return s.getsockname()[0]
+        ip = s.getsockname()[0]
     except Exception:
-        try:
-            return socket.gethostbyname(socket.gethostname())
-        except Exception:
-            return "127.0.0.1"
+        ip = "127.0.0.1"
     finally:
         s.close()
+    return ip
+
+
+get_local_ip = get_local_lan_ip
 
 
 def main():

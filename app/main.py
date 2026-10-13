@@ -32,7 +32,7 @@ from app.auth import (
 )
 from app.database import Base, engine, get_db, init_db
 from app.verification import audit_excuse_with_ai, evaluate_viva_answer, generate_viva_question
-from app.watchdogs.git_guard import verify_workspace_activity
+from app.watchdogs.git_guard import check_workspace_activity, verify_workspace_activity
 
 
 def get_local_ip() -> str:
@@ -339,23 +339,27 @@ def complete_active_session(
 
     task = crud.get_task(db, session.task_id, user_id=current_user)
     task_title = task.title if task else "Focus Session"
-    category = task.category if task else "coding"
+    category = (task.category or "").lower().strip() if task else "coding"
     background_tasks.add_task(mobile_bridge.dispatch_session_end, task_title)
 
     proof = data.code_snippet or data.proof_text or ""
     question = None
     if proof:
-        activity = verify_workspace_activity(since_timestamp=session.started_at)
-        if not activity.get("has_activity", False):
-            raise HTTPException(
-                status_code=400,
-                detail="No code or notes modified in the workspace during this session. Complete your work before viva defense.",
-            )
+        git_context = None
+        if category == "coding":
+            activity = check_workspace_activity(since_timestamp=session.started_at)
+            if not activity.get("has_activity", False):
+                raise HTTPException(
+                    status_code=400,
+                    detail="Zero file modifications detected in your workspace during this coding block. Make and save code changes before viva defense.",
+                )
+            git_context = activity.get("summary")
+
         question = generate_viva_question(
             proof_text=proof,
             category=category,
             pasted_burst_detected=session.pasted_burst_detected,
-            git_context=activity.get("summary"),
+            git_context=git_context,
         )
         crud.set_viva_question(db, session.id, question, proof, user_id=current_user)
 
@@ -547,21 +551,24 @@ def request_viva(
             detail=f"Session verification status is already '{session.verification_status}'",
         )
 
-    activity = verify_workspace_activity(since_timestamp=session.started_at)
-    if not activity.get("has_activity", False):
-        raise HTTPException(
-            status_code=400,
-            detail="No code or notes modified in the workspace during this session. Complete your work before viva defense.",
-        )
-
     task = crud.get_task(db, session.task_id, user_id=current_user)
-    category = task.category if task else "coding"
+    category = (task.category or "").lower().strip() if task else "coding"
+
+    git_context = None
+    if category == "coding":
+        activity = check_workspace_activity(since_timestamp=session.started_at)
+        if not activity.get("has_activity", False):
+            raise HTTPException(
+                status_code=400,
+                detail="Zero file modifications detected in your workspace during this coding block. Make and save code changes before viva defense.",
+            )
+        git_context = activity.get("summary")
 
     question = generate_viva_question(
         proof_text=data.proof_text,
         category=category,
         pasted_burst_detected=session.pasted_burst_detected,
-        git_context=activity.get("summary"),
+        git_context=git_context,
     )
     crud.set_viva_question(db, session_id, question, data.proof_text, user_id=current_user)
     return schemas.VivaResult(
