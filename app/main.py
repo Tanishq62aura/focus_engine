@@ -19,7 +19,7 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app import crud, mobile_bridge, models, schemas
-from app.routers import auth, reports, sessions, settings, support
+from app.routers import auth, mobile, reports, sessions, settings, support
 from app.auth import (
     AUTH_DISABLED,
     DEV_USER_ID,
@@ -158,6 +158,8 @@ app.include_router(support.router, tags=["support"])
 app.include_router(reports.router, prefix="/api", tags=["reports"])
 app.include_router(sessions.router, prefix="/api", tags=["sessions"])
 app.include_router(sessions.router, tags=["sessions"])
+app.include_router(mobile.router, prefix="/api/mobile", tags=["mobile"])
+app.include_router(mobile.router, prefix="/mobile", tags=["mobile"])
 
 
 # ---------------------------------------------------------------------------

@@ -500,3 +500,16 @@ class StreakReport(BaseModel):
     status: str
 
 
+# ---------------------------------------------------------------------------
+# Mobile Shell & OTA Update Pipeline
+# ---------------------------------------------------------------------------
+class MobileManifestResponse(BaseModel):
+    latest_version: str = "1.0.0"
+    build_number: int = 100
+    bundle_url: Optional[str] = None
+    checksum_sha256: Optional[str] = None
+    mandatory_update: bool = False
+    release_notes: Optional[str] = None
+    update_available: bool = False
+
+

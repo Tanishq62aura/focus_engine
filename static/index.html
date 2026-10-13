@@ -2564,9 +2564,59 @@
       initMobileNav();
       initModalTouchGestures();
 
+      // Check for Capacitor native OTA updates
+      checkMobileOtaUpdate();
+
       // Poll for paste flags every 5s when a session is active
       setInterval(pollPasteFlag, 5000);
     });
+
+    // ---------------------------------------------------------------
+    // Mobile Capacitor Native Container & OTA Manifest Pipeline
+    // ---------------------------------------------------------------
+    async function checkMobileOtaUpdate() {
+      try {
+        const isNative = Boolean(window.Capacitor && typeof window.Capacitor.isNativePlatform === 'function' && window.Capacitor.isNativePlatform());
+        if (!isNative) return;
+
+        const currentBuild = parseInt(localStorage.getItem('focus_mobile_build') || '90', 10);
+        const res = await api('GET', `/api/mobile/manifest?current_build=${currentBuild}`);
+        if (res && res.update_available) {
+          renderOtaUpdateToast(res);
+        }
+      } catch (err) {
+        console.warn('OTA Manifest verification bypassed:', err);
+      }
+    }
+    window.checkMobileOtaUpdate = checkMobileOtaUpdate;
+
+    function renderOtaUpdateToast(manifest) {
+      const container = document.getElementById('toast-container');
+      const toastEl = document.createElement('div');
+      toastEl.className = 'toast-enter p-3.5 rounded-xl border border-emerald-500/50 bg-zinc-950/95 text-zinc-100 shadow-2xl flex items-center justify-between gap-3 cursor-pointer group hover:border-emerald-400 transition';
+      toastEl.innerHTML = `
+        <div class="flex items-center gap-2.5 min-w-0">
+          <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse flex-shrink-0"></span>
+          <div class="text-xs">
+            <div class="font-semibold text-emerald-300">New workspace version available.</div>
+            <div class="text-[10px] text-zinc-400">Tap to reload (${escapeHtml(manifest.latest_version || 'v1.0.0')})</div>
+          </div>
+        </div>
+        <button type="button" class="px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-[11px] font-bold flex-shrink-0 shadow transition">
+          Reload
+        </button>
+      `;
+      toastEl.addEventListener('click', () => {
+        if (manifest.build_number) {
+          localStorage.setItem('focus_mobile_build', String(manifest.build_number));
+        }
+        window.location.reload();
+      });
+      if (container) {
+        container.appendChild(toastEl);
+      }
+    }
+    window.renderOtaUpdateToast = renderOtaUpdateToast;
 
     // ---------------------------------------------------------------
     // Toast

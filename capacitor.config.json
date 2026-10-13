@@ -1,0 +1,9 @@
+{
+  "appId": "com.focusengine.app",
+  "appName": "Focus Engine",
+  "webDir": "static",
+  "bundledWebRuntime": false,
+  "server": {
+    "cleartext": true
+  }
+}

@@ -128,5 +128,16 @@ logs/
 scratch/
 tmp/
 temp/
-cloudflared.exe
 *.exe
+
+# ------------------------------------------------------------------------------
+# 11. MOBILE / ANDROID BUILD ARTIFACTS
+# ------------------------------------------------------------------------------
+.gradle/
+android/.gradle/
+android/app/build/
+android/build/
+android/captures/
+android/.idea/
+android/*.iml
+android/app/*.iml
