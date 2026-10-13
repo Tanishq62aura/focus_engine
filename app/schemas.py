@@ -431,9 +431,9 @@ class SupportChatResponse(BaseModel):
 
 
 class CategoryApprovalRequest(BaseModel):
-    name: str = Field(..., min_length=1, max_length=100)
-    id: Optional[str] = None
-    label: Optional[str] = None
+    name: str = Field(..., min_length=2, max_length=30)
+    id: Optional[str] = Field(None, max_length=30)
+    label: Optional[str] = Field(None, max_length=30)
     requires_code_watchdog: bool = False
     friction_threshold: int = 3
     default_duration_min: int = 45

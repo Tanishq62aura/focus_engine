@@ -3,14 +3,16 @@ app/routers/support.py
 Embedded AI Support and Query Assistant using Gemini 2.5 Flash.
 Acts as an operational coach, answering queries on app mechanics, study tracks, and initiation resistance.
 """
+import json
 import logging
 import os
 import re
 from typing import Any, Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
+from app import models
 from app.auth import get_current_user
 from app.database import get_db
 from app.models import FocusSession
@@ -19,6 +21,10 @@ from app.schemas import CategoryApprovalRequest, SupportChatRequest, SupportChat
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+SYSTEM_DEFAULT_SLUGS = frozenset({"coding", "tnp", "theory", "writing", "research"})
+MAX_TRACK_LIMIT = 30
+MAX_TRACK_NAME_LENGTH = 30
 
 # ---------------------------------------------------------------------------
 # Gemini Client Setup
@@ -69,41 +75,140 @@ System Architecture Knowledge:
 """
 
 
-def _extract_category_proposal(message: str) -> Optional[dict[str, Any]]:
+def _sanitize_track_name(raw_name: str) -> Optional[tuple[str, str]]:
     """
-    Detect user intent to create/add/track a new category, subject, or study track.
-    Returns structured proposal metadata without modifying the database.
+    Defensively sanitizes track names:
+    - Strips trailing filler and conversational commands.
+    - Strips special characters, preserving alphanumeric, whitespace, hyphens, and underscores.
+    - Enforces a strict 30-character length cap.
+    - Generates slug and prevents collision against system defaults.
     """
+    if not raw_name:
+        return None
+    raw = raw_name.strip()
+    raw = re.sub(r"\s+and\s+assign.*$", "", raw, flags=re.IGNORECASE).strip()
+    raw = re.sub(r"\s+immediately.*$", "", raw, flags=re.IGNORECASE).strip()
+    raw = re.sub(r"\s*,?\s*set\s+(?:that|a|up)?\s*(?:bucket|track|it)?\s*(?:up\s+for\s+me|for\s+me|up)?.*$", "", raw, flags=re.IGNORECASE).strip()
+    raw = re.sub(r"\s+from\s+now\s+on.*$", "", raw, flags=re.IGNORECASE).strip()
+
+    cleaned = re.sub(r"[^a-zA-Z0-9\s\-_]", "", raw).strip()
+    cleaned = re.sub(r"\s+", " ", cleaned)[:MAX_TRACK_NAME_LENGTH].strip()
+    if len(cleaned) < 2:
+        return None
+
+    slug = re.sub(r"[^a-z0-9]+", "_", cleaned.lower()).strip("_")[:MAX_TRACK_NAME_LENGTH]
+    if not slug:
+        return None
+
+    if slug in SYSTEM_DEFAULT_SLUGS:
+        logger.info("Category extraction rejected collision with system default slug: %s", slug)
+        return None
+
+    return cleaned, slug
+
+
+def _build_proposal_payload(
+    clean_name: str,
+    clean_id: str,
+    prompt_context: str,
+    justification: Optional[str] = None,
+    requires_code: Optional[bool] = None,
+) -> dict[str, Any]:
+    if requires_code is None:
+        requires_code = any(
+            k in clean_name.lower()
+            for k in ["code", "system", "algorithm", "dev", "engine", "software", "program", "distributed"]
+        )
+    return {
+        "id": clean_id,
+        "name": clean_name,
+        "label": clean_name,
+        "suggested_name": clean_name,
+        "status": "pending_approval",
+        "justification": justification or f"Proposed via chat from user prompt: '{prompt_context[:100]}'",
+        "requires_code_watchdog": requires_code,
+        "friction_threshold": 3,
+        "default_duration_min": 45,
+    }
+
+
+def _extract_category_proposal_gemini(message: str) -> Optional[dict[str, Any]]:
+    """Use Gemini 2.5 Flash structured schema extraction for conversational queries."""
+    if _client is None:
+        return None
+    try:
+        extraction_prompt = (
+            "You are an intent and entity extractor for a deep work execution system.\n"
+            "Analyze the user message to determine if they are requesting or intending to create, "
+            "track, add, or set up a new category, subject, study track, topic, or bucket.\n"
+            "Conversational examples: 'From now on, all my work should go into Distributed Systems, set that bucket up for me', "
+            "'I want to track a new subject called Algorithms'.\n"
+            "If YES: output is_proposal: true with the proposed category name, justification, and whether it requires coding.\n"
+            "If NO (queries about system mechanics, questions, out-of-bounds IDs): output is_proposal: false.\n\n"
+            f"User message: {message}\n\n"
+            "Return JSON: {\"is_proposal\": bool, \"name\": str or null, \"justification\": str or null, \"requires_code\": bool}"
+        )
+        response = _client.models.generate_content(
+            model=_MODEL,
+            contents=extraction_prompt,
+            config=genai_types.GenerateContentConfig(
+                response_mime_type="application/json",
+                temperature=0.0,
+                max_output_tokens=150,
+            ),
+        )
+        if response and response.text:
+            parsed = json.loads(response.text.strip())
+            if parsed.get("is_proposal") and parsed.get("name"):
+                sanitized = _sanitize_track_name(parsed["name"])
+                if sanitized:
+                    clean_name, clean_id = sanitized
+                    return _build_proposal_payload(
+                        clean_name,
+                        clean_id,
+                        message,
+                        parsed.get("justification"),
+                        parsed.get("requires_code"),
+                    )
+    except Exception as err:
+        logger.debug("Gemini structured intent extraction skipped/failed: %s", err)
+    return None
+
+
+def _extract_category_proposal_semantic(message: str) -> Optional[dict[str, Any]]:
+    """Conversational semantic patterns for offline/fallback intent extraction."""
     msg = message.strip()
     patterns = [
-        r"(?:track|add|create|log|propose)\s+(?:a\s+)?(?:brand\s+new\s+|new\s+)?(?:category|subject|track|course)\s+(?:named|called|for)?\s*['\"]?([^'\".,\n!?;]+)['\"]?",
-        r"(?:category|subject|track|course)\s+(?:named|called)\s*['\"]?([^'\".,\n!?;]+)['\"]?",
-        r"(?:new\s+subject\s+called|new\s+track\s+called|new\s+category\s+called)\s*['\"]?([^'\".,\n!?;]+)['\"]?",
-        r"(?:want\s+to\s+track)\s+(?:a\s+)?(?:new\s+)?(?:subject|track|topic)?\s*(?:called|named)?\s*['\"]?([^'\".,\n!?;]+)['\"]?",
+        # Conversational / bucket redirection phrasing
+        r"""(?:from\s+now\s+on\s*,\s*)?(?:all\s+my\s+)?(?:work|sessions?|focus|study)\s+(?:should|will)\s+go\s+into\s+['"]?([^'",\n!?;]+?)['"]?(?:,\s*|\s+and\s+|\s+set\s+|\s*$)""",
+        # Set up a bucket/track for X
+        r"""(?:set\s+up|create|add)\s+(?:a\s+)?(?:new\s+)?(?:bucket|track|category|subject)\s+(?:for|called|named)\s+['"]?([^'",\n!?;]+)['"]?""",
+        # Explicit track/category directives
+        r"""(?:track|add|create|log|propose)\s+(?:a\s+)?(?:brand\s+new\s+|new\s+)?(?:category|subject|track|course|bucket)\s+(?:named|called|for)?\s*['"]?([^'",\n!?;]+)['"]?""",
+        r"""(?:category|subject|track|course|bucket)\s+(?:named|called)\s*['"]?([^'",\n!?;]+)['"]?""",
+        r"""(?:new\s+subject\s+called|new\s+track\s+called|new\s+category\s+called|new\s+bucket\s+called)\s*['"]?([^'",\n!?;]+)['"]?""",
+        r"""(?:want\s+to\s+track)\s+(?:a\s+)?(?:new\s+)?(?:subject|track|topic|category|bucket)?\s*(?:called|named)?\s*['"]?([^'",\n!?;]+)['"]?""",
     ]
     for p in patterns:
         m = re.search(p, msg, re.IGNORECASE)
         if m:
             raw_name = m.group(1).strip()
-            # Clean up trailing instructions (e.g. "and assign my session...", "immediately")
-            raw_name = re.sub(r"\s+and\s+assign.*$", "", raw_name, flags=re.IGNORECASE).strip()
-            raw_name = re.sub(r"\s+immediately.*$", "", raw_name, flags=re.IGNORECASE).strip()
-            raw_name = raw_name.strip("'\"` ").strip()
-            if raw_name and 2 <= len(raw_name) <= 60:
-                clean_id = re.sub(r"[^a-z0-9]+", "_", raw_name.lower()).strip("_")
-                if clean_id:
-                    return {
-                        "id": clean_id,
-                        "name": raw_name,
-                        "label": raw_name,
-                        "suggested_name": raw_name,
-                        "status": "pending_approval",
-                        "justification": f"Proposed via chat from user prompt: '{msg[:120]}'",
-                        "requires_code_watchdog": any(k in raw_name.lower() for k in ["code", "system", "algorithm", "dev", "engine", "software", "program", "distributed"]),
-                        "friction_threshold": 3,
-                        "default_duration_min": 45,
-                    }
+            sanitized = _sanitize_track_name(raw_name)
+            if sanitized:
+                clean_name, clean_id = sanitized
+                return _build_proposal_payload(clean_name, clean_id, msg)
     return None
+
+
+def _extract_category_proposal(message: str) -> Optional[dict[str, Any]]:
+    """
+    Defensively extracts category proposal intents using Gemini structured extraction
+    with deterministic conversational semantic parsing fallback.
+    """
+    gemini_proposal = _extract_category_proposal_gemini(message)
+    if gemini_proposal:
+        return gemini_proposal
+    return _extract_category_proposal_semantic(message)
 
 
 def _generate_fallback_response(query: str) -> str:
@@ -234,29 +339,73 @@ def approve_category_proposal(
     current_user: str = Depends(get_current_user),
 ):
     from app.routers.settings import _get_or_create_settings
-    setting = _get_or_create_settings(db, current_user)
+
+    # Concurrency-defensive fetch
+    try:
+        setting = db.query(models.UserSetting).filter(models.UserSetting.user_id == current_user).with_for_update().first()
+    except Exception:
+        setting = db.query(models.UserSetting).filter(models.UserSetting.user_id == current_user).first()
+
+    if not setting:
+        setting = _get_or_create_settings(db, current_user)
+
+    # Sanitize name defensively
+    sanitized = _sanitize_track_name(payload.name)
+    if sanitized:
+        clean_name, generated_id = sanitized
+    else:
+        clean_name = re.sub(r"[^a-zA-Z0-9\s\-_]", "", payload.name).strip()
+        clean_name = re.sub(r"\s+", " ", clean_name)[:MAX_TRACK_NAME_LENGTH].strip()
+        generated_id = re.sub(r"[^a-z0-9]+", "_", clean_name.lower()).strip("_")[:MAX_TRACK_NAME_LENGTH]
+
+    if not clean_name or len(clean_name) < 2:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Category name must contain between 2 and 30 valid characters.",
+        )
+
+    track_id = (payload.id and re.sub(r"[^a-z0-9]+", "_", payload.id.lower()).strip("_")[:MAX_TRACK_NAME_LENGTH]) or generated_id
+    if not track_id:
+        track_id = generated_id
+
+    # Defensive Slug Collision Check Against Core System Tracks
+    if track_id in SYSTEM_DEFAULT_SLUGS:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Cannot overwrite core system track '{track_id}'. Please choose a distinct name.",
+        )
 
     existing_tracks = list(setting.custom_tracks or setting.tracks or [])
-    track_name = payload.name.strip()
-    track_id = payload.id or re.sub(r"[^a-z0-9]+", "_", track_name.lower()).strip("_")
 
-    # Check if already exists
+    # Idempotent return if already active in this user's settings
     for t in existing_tracks:
         if t.get("id") == track_id:
             return {
                 "status": "already_exists",
-                "message": f"Track '{track_name}' (ID: {track_id}) is already active in your settings.",
+                "message": f"Track '{clean_name}' (ID: {track_id}) is already active in your settings.",
                 "track": t,
                 "all_tracks": existing_tracks,
             }
 
+    # Count total active tracks (union of existing custom tracks and system defaults)
+    existing_ids = {t.get("id") for t in existing_tracks if isinstance(t, dict) and t.get("id")}
+    total_active_ids = existing_ids.union(SYSTEM_DEFAULT_SLUGS)
+
+    # ENFORCE HARD CATEGORY UPPER-BOUND (CAP = 30)
+    if len(total_active_ids) >= MAX_TRACK_LIMIT or len(existing_tracks) >= MAX_TRACK_LIMIT:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Maximum track limit reached (30 tracks). Delete or archive existing tracks before adding new ones.",
+        )
+
     new_track = {
         "id": track_id,
-        "label": payload.label or track_name,
+        "label": (payload.label and payload.label[:MAX_TRACK_NAME_LENGTH]) or clean_name,
         "default_duration_min": payload.default_duration_min or 45,
         "requires_code_watchdog": payload.requires_code_watchdog,
         "friction_threshold": payload.friction_threshold,
-        "custom_viva_prompt": payload.custom_viva_prompt or f"Evaluate conceptual depth and verified mastery of {track_name}.",
+        "custom_viva_prompt": payload.custom_viva_prompt or f"Evaluate conceptual depth and verified mastery of {clean_name}.",
+        "verification_prompt_override": payload.custom_viva_prompt or f"Evaluate conceptual depth and verified mastery of {clean_name}.",
     }
     existing_tracks.append(new_track)
     setting.custom_tracks = existing_tracks
@@ -264,10 +413,10 @@ def approve_category_proposal(
     db.commit()
     db.refresh(setting)
 
-    logger.info("Category proposal approved and committed: %s (user: %s)", track_id, current_user)
+    logger.info("Category proposal approved and committed: %s (user: %s, total: %d)", track_id, current_user, len(existing_tracks))
     return {
         "status": "approved",
-        "message": f"Track '{track_name}' successfully added to your workspace configuration.",
+        "message": f"Track '{clean_name}' successfully added to your workspace configuration.",
         "track": new_track,
         "all_tracks": existing_tracks,
     }

@@ -483,6 +483,11 @@ def create_or_update_track(
             updated = True
             break
     if not updated:
+        if len(raw) >= 30:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Maximum track limit reached (30 tracks). Delete or archive existing tracks before adding new ones.",
+            )
         raw.append(track_dict)
 
     setting.custom_tracks = raw
