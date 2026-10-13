@@ -426,6 +426,19 @@ class SupportChatRequest(BaseModel):
 class SupportChatResponse(BaseModel):
     reply: str
     session_id: Optional[str] = None
+    action: Optional[str] = None
+    data: Optional[dict[str, Any]] = None
+
+
+class CategoryApprovalRequest(BaseModel):
+    name: str = Field(..., min_length=1, max_length=100)
+    id: Optional[str] = None
+    label: Optional[str] = None
+    requires_code_watchdog: bool = False
+    friction_threshold: int = 3
+    default_duration_min: int = 45
+    custom_viva_prompt: Optional[str] = None
+    justification: Optional[str] = None
 
 
 # ---------------------------------------------------------------------------

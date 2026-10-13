@@ -2032,9 +2032,11 @@
     async function handleSupportSend(e) {
       if (e && typeof e.preventDefault === 'function') e.preventDefault();
       const input = document.getElementById('support-input');
+      const sendBtn = document.getElementById('btn-support-send');
       const msg = input ? input.value.trim() : '';
       if (!msg) return;
       input.value = '';
+      if (sendBtn) sendBtn.disabled = true;
 
       const container = document.getElementById('support-chat-messages');
       // Append user bubble
@@ -2046,8 +2048,8 @@
 
       // Append assistant placeholder
       const botBubble = document.createElement('div');
-      botBubble.className = 'p-3 rounded-xl bg-zinc-900/90 text-zinc-300 mr-4 border border-zinc-800 mono leading-relaxed whitespace-pre-wrap';
-      botBubble.innerHTML = '<span class="spin inline-block mr-1">⟳</span> Consulting execution coach…';
+      botBubble.className = 'p-3 rounded-xl bg-zinc-900/90 text-zinc-300 mr-4 border border-zinc-800 leading-relaxed space-y-2.5';
+      botBubble.innerHTML = '<div class="text-zinc-400 mono flex items-center gap-1.5"><span class="spin inline-block">⟳</span> Consulting execution coach…</div>';
       container.appendChild(botBubble);
       container.scrollTop = container.scrollHeight;
 
@@ -2057,12 +2059,123 @@
           session_id: activeSessionId || undefined
         };
         const res = await api('POST', '/api/support/chat', payload);
-        botBubble.textContent = res.reply || 'No response from assistant.';
+
+        // Render response content cleanly in the chat bubble
+        const replyText = res.reply || 'No response from assistant.';
+        botBubble.innerHTML = `<div class="text-zinc-200 whitespace-pre-wrap leading-relaxed mono text-xs">${escapeHtml(replyText)}</div>`;
+
+        // Check for Dynamic Category Proposal Flow
+        if (res.action === 'propose_category' && res.data) {
+          renderCategoryProposalCard(botBubble, res.data);
+        }
       } catch (err) {
-        botBubble.textContent = 'Error: ' + err.message;
+        // Render validation and execution rejections cleanly inside the chat bubble without generic toasts
+        const rawErr = err.message || 'Execution request failed.';
+        const cleanErr = rawErr.replace(/^Validation error:\s*/i, '').replace(/^Error:\s*/i, '');
+        botBubble.innerHTML = `
+          <div class="p-2.5 rounded-lg bg-amber-500/10 border border-amber-500/30 text-amber-300 text-xs space-y-1">
+            <div class="font-semibold flex items-center gap-1.5 text-amber-400">
+              <span>⚠</span> Validation Notice
+            </div>
+            <div class="text-[11px] text-amber-200/90 leading-relaxed">${escapeHtml(cleanErr)}</div>
+          </div>
+        `;
       } finally {
+        if (sendBtn) sendBtn.disabled = false;
         container.scrollTop = container.scrollHeight;
       }
+    }
+
+    function renderCategoryProposalCard(containerEl, data) {
+      const card = document.createElement('div');
+      card.className = 'mt-3 p-3 rounded-xl bg-zinc-950/90 border border-emerald-500/40 shadow-lg space-y-2.5';
+
+      const trackName = data.name || data.suggested_name || 'New Study Track';
+      const trackId = data.id || trackName.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
+      const justification = data.justification || 'Extracted from chat prompt';
+      const statusText = data.status || 'pending_approval';
+
+      card.innerHTML = `
+        <div class="flex items-center justify-between gap-2">
+          <div class="flex items-center gap-1.5">
+            <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+            <span class="text-[10px] font-bold uppercase tracking-wider text-emerald-400">Track Proposal</span>
+          </div>
+          <span class="px-2 py-0.5 rounded text-[10px] font-mono bg-emerald-500/10 text-emerald-300 border border-emerald-500/20">
+            ${escapeHtml(statusText)}
+          </span>
+        </div>
+        <div class="flex items-center gap-2 flex-wrap">
+          <span class="text-xs text-zinc-400">Proposed Category:</span>
+          <span class="px-2.5 py-1 rounded-md text-xs font-semibold bg-zinc-800 text-zinc-100 border border-zinc-700">
+            ${escapeHtml(trackName)}
+          </span>
+          <span class="text-[10px] mono text-zinc-500">(${escapeHtml(trackId)})</span>
+        </div>
+        <div class="text-[11px] text-zinc-400 leading-normal italic">
+          ${escapeHtml(justification)}
+        </div>
+        <div class="proposal-actions pt-1 flex items-center gap-2">
+          <button type="button" class="btn-approve-track px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-medium text-xs flex items-center gap-1.5 transition active:scale-95 cursor-pointer shadow-sm">
+            <span>✓</span> Approve & Add to Tracks
+          </button>
+          <button type="button" class="btn-dismiss-track px-3 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-400 hover:text-zinc-200 text-xs transition active:scale-95 cursor-pointer">
+            Dismiss
+          </button>
+        </div>
+        <div class="proposal-status-result hidden pt-1 text-[11px] font-medium"></div>
+      `;
+
+      const approveBtn = card.querySelector('.btn-approve-track');
+      const dismissBtn = card.querySelector('.btn-dismiss-track');
+      const actionsRow = card.querySelector('.proposal-actions');
+      const resultEl = card.querySelector('.proposal-status-result');
+
+      approveBtn.addEventListener('click', async () => {
+        approveBtn.disabled = true;
+        dismissBtn.disabled = true;
+        approveBtn.innerHTML = '<span class="spin inline-block">⟳</span> Adding track…';
+
+        try {
+          const res = await api('POST', '/api/categories/approve', {
+            name: trackName,
+            id: trackId,
+            label: trackName,
+            requires_code_watchdog: !!data.requires_code_watchdog,
+            friction_threshold: data.friction_threshold || 3,
+            default_duration_min: data.default_duration_min || 45,
+            justification: justification
+          });
+
+          actionsRow.classList.add('hidden');
+          resultEl.className = 'proposal-status-result pt-1 text-[11px] font-medium text-emerald-400 flex items-center gap-1.5';
+          resultEl.innerHTML = `<span>✓</span> Track <strong>${escapeHtml(trackName)}</strong> added to workspace.`;
+          resultEl.classList.remove('hidden');
+
+          if (typeof triggerHaptic === 'function') triggerHaptic('success');
+          // Reload dynamic tracks so HUD dropdown & Settings Drawer update immediately
+          if (typeof loadTracks === 'function') await loadTracks();
+        } catch (err) {
+          approveBtn.disabled = false;
+          dismissBtn.disabled = false;
+          approveBtn.innerHTML = '<span>✓</span> Approve & Add to Tracks';
+          resultEl.className = 'proposal-status-result pt-1 text-[11px] font-medium text-rose-400';
+          resultEl.textContent = `Approval failed: ${err.message}`;
+          resultEl.classList.remove('hidden');
+        }
+      });
+
+      dismissBtn.addEventListener('click', () => {
+        approveBtn.disabled = true;
+        dismissBtn.disabled = true;
+        actionsRow.classList.add('hidden');
+        resultEl.className = 'proposal-status-result pt-1 text-[11px] font-medium text-zinc-500 italic';
+        resultEl.textContent = 'Proposal dismissed.';
+        resultEl.classList.remove('hidden');
+        if (typeof triggerHaptic === 'function') triggerHaptic('tap');
+      });
+
+      containerEl.appendChild(card);
     }
 
     // State
