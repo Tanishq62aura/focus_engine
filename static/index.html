@@ -1686,18 +1686,6 @@
     // Mobile Haptic Feedback & Touch Ergonomics Engine
     // ---------------------------------------------------------------
     function triggerHaptic(type = 'tap') {
-      // 1. Capacitor native bridge if running inside native shell
-      if (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.Haptics) {
-        try {
-          const Haptics = window.Capacitor.Plugins.Haptics;
-          if (type === 'tap') Haptics.impact({ style: 'LIGHT' });
-          else if (type === 'success') Haptics.notification({ type: 'SUCCESS' });
-          else if (type === 'warning') Haptics.notification({ type: 'WARNING' });
-          else if (type === 'heavy') Haptics.impact({ style: 'HEAVY' });
-          return;
-        } catch (_) {}
-      }
-      // 2. Web Vibration API fallback
       if (typeof navigator !== 'undefined' && navigator.vibrate) {
         try {
           if (type === 'tap') navigator.vibrate(12);
@@ -2576,57 +2564,9 @@
       initMobileNav();
       initModalTouchGestures();
 
-      // Remote Hosted Shell: verify live FastAPI host connectivity
-      checkHostConnectivity();
-      window.addEventListener('online', checkHostConnectivity);
-      window.addEventListener('offline', renderHostOfflineToast);
-
       // Poll for paste flags every 5s when a session is active
       setInterval(pollPasteFlag, 5000);
     });
-
-    // ---------------------------------------------------------------
-    // Remote Hosted Shell: Host Connectivity & Health Verification
-    // ---------------------------------------------------------------
-    let hostOfflineToastEl = null;
-
-    async function checkHostConnectivity() {
-      try {
-        const res = await fetch((API || '') + '/auth/status', { method: 'GET', cache: 'no-store' });
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        if (hostOfflineToastEl) {
-          hostOfflineToastEl.remove();
-          hostOfflineToastEl = null;
-          toast('Connected to Focus Engine host.', 'success');
-        }
-      } catch (err) {
-        if (!hostOfflineToastEl) {
-          renderHostOfflineToast();
-        }
-      }
-    }
-    window.checkHostConnectivity = checkHostConnectivity;
-
-    function renderHostOfflineToast() {
-      const container = document.getElementById('toast-container');
-      if (!container || hostOfflineToastEl) return;
-      hostOfflineToastEl = document.createElement('div');
-      hostOfflineToastEl.className = 'toast-enter p-3 rounded-xl border border-rose-500/60 bg-zinc-950/95 text-zinc-100 shadow-2xl flex items-center justify-between gap-3';
-      hostOfflineToastEl.innerHTML = `
-        <div class="flex items-center gap-2 min-w-0">
-          <span class="w-2 h-2 rounded-full bg-rose-500 animate-ping flex-shrink-0"></span>
-          <div class="text-xs">
-            <div class="font-semibold text-rose-300">Host Unreachable</div>
-            <div class="text-[10px] text-zinc-400">Remote FastAPI server offline or disconnected.</div>
-          </div>
-        </div>
-        <button type="button" onclick="checkHostConnectivity()" class="px-2.5 py-1 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-[11px] font-bold flex-shrink-0 transition">
-          Retry
-        </button>
-      `;
-      container.appendChild(hostOfflineToastEl);
-    }
-    window.renderHostOfflineToast = renderHostOfflineToast;
 
     // ---------------------------------------------------------------
     // Toast
