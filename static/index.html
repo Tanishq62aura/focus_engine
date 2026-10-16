@@ -2294,22 +2294,38 @@
       if (!widget) return;
 
       try {
-        const timetable = await api('GET', '/api/timetables/active');
-        if (!timetable || !timetable.blocks || timetable.blocks.length === 0) {
-          widget.classList.add('hidden');
+        const data = await api('GET', '/api/timetables/active');
+        if (!data || data.active === false || !data.blocks || data.blocks.length === 0) {
+          // If all blocks in an earlier active session finished, display an optional completion banner
+          const wasCompleted = window.activeTimetable && window.activeTimetable.blocks && window.activeTimetable.blocks.length > 0 && window.activeTimetable.blocks.every(b => b.status === 'COMPLETED');
+          if (wasCompleted) {
+            try { localStorage.removeItem('active_session_id'); } catch (_) {}
+            widget.innerHTML = `
+              <div class="p-4 rounded-xl bg-gradient-to-r from-emerald-950/70 to-zinc-900 border border-emerald-500/50 shadow-xl font-mono text-xs space-y-2 text-center">
+                <div class="text-sm font-bold font-sans text-emerald-300">
+                  🎯 All scheduled blocks completed! Rest and recharge.
+                </div>
+              </div>
+            `;
+            widget.classList.remove('hidden');
+          } else {
+            widget.classList.add('hidden');
+          }
           return;
         }
 
+        const timetable = data;
         window.activeTimetable = timetable;
 
         // Filter blocks to find first block with status !== 'COMPLETED'
         const nonCompletedBlocks = (timetable.blocks || []).filter(b => b.status !== 'COMPLETED');
         if (nonCompletedBlocks.length === 0) {
           window.activeTimetableBlock = null;
+          try { localStorage.removeItem('active_session_id'); } catch (_) {}
           widget.innerHTML = `
             <div class="p-4 rounded-xl bg-gradient-to-r from-emerald-950/70 to-zinc-900 border border-emerald-500/50 shadow-xl font-mono text-xs space-y-2 text-center">
               <div class="text-sm font-bold font-sans text-emerald-300">
-                🎉 Timetable Completed! All scheduled blocks defended and verified.
+                🎯 All scheduled blocks completed! Rest and recharge.
               </div>
               <div class="text-zinc-400 text-[11px] font-sans">
                 Curriculum <span class="text-zinc-200 font-semibold">${escapeHtml(timetable.title || '')}</span> (${timetable.total_days} Days) fully defended.
@@ -3071,7 +3087,9 @@
         throw httpErr;
       }
 
-      return await res.json();
+      if (res.status === 204) return null;
+      const text = await res.text();
+      return text ? JSON.parse(text) : null;
     }
 
     // ---------------------------------------------------------------
@@ -3738,6 +3756,11 @@
         const titleEl = document.getElementById('viva-verdict-title');
         const boxEl = document.getElementById('viva-verdict-box');
         if (passed) {
+          try { localStorage.removeItem('active_session_id'); } catch (_) {}
+          activeSessionId = null;
+          currentSession = null;
+          window.currentSession = null;
+          window.activeSession = null;
           titleEl.textContent = 'PASS – Verified!';
           titleEl.className = 'text-lg font-bold mb-3 text-green-400';
           boxEl.className = 'px-5 py-4 rounded-xl border text-sm leading-relaxed mb-4 mono whitespace-pre-wrap verdict-pass bg-green-500/5 text-green-200';

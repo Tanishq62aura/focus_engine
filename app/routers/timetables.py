@@ -5,7 +5,7 @@ Handles authorization, window checks, state transitions, and session startup.
 """
 import logging
 from datetime import datetime, timezone
-from typing import Any
+from typing import Any, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
@@ -62,7 +62,7 @@ def stage_timetable(
     return timetable
 
 
-@router.get("/active", response_model=StudyTimetableResponse)
+@router.get("/active", response_model=Optional[StudyTimetableResponse])
 def get_active_timetable(
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
@@ -77,7 +77,7 @@ def get_active_timetable(
         .first()
     )
     if not timetable:
-        raise HTTPException(status_code=404, detail="No active study timetable found")
+        return None
 
     # Find next target block: in-progress block, or first non-completed block
     target = next((b for b in timetable.blocks if b.status != "COMPLETED"), None)
