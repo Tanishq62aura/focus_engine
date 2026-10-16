@@ -19,7 +19,7 @@ from app.database import get_db
 
 logger = logging.getLogger("focus_engine.reports")
 
-router = APIRouter(prefix="/reports", tags=["reports"])
+router = APIRouter(tags=["reports"])
 
 
 def _get_or_create_user_settings(db: Session, user_id: str) -> models.UserSetting:
