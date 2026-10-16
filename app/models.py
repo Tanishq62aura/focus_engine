@@ -10,6 +10,7 @@ from datetime import datetime, timezone
 from sqlalchemy import (
     Boolean,
     Column,
+    Date,
     DateTime,
     Enum,
     Float,
@@ -18,6 +19,8 @@ from sqlalchemy import (
     JSON,
     String,
     Text,
+    Time,
+    func,
 )
 from sqlalchemy.orm import relationship
 
@@ -234,4 +237,52 @@ class UserSetting(Base):
 
     created_at = Column(DateTime(timezone=True), nullable=False, default=_utcnow)
     updated_at = Column(DateTime(timezone=True), nullable=False, default=_utcnow, onupdate=_utcnow)
+
+
+# ---------------------------------------------------------------------------
+# StudyTimetable & TimetableBlock
+# ---------------------------------------------------------------------------
+class StudyTimetable(Base):
+    __tablename__ = "study_timetables"
+
+    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
+    user_id = Column(String(64), nullable=False, index=True)
+    title = Column(String(128), nullable=False)
+    track_id = Column(String(64), nullable=False, default="coding")
+    total_days = Column(Integer, nullable=False, default=7)
+    status = Column(String(32), nullable=False, default="ACTIVE")  # ACTIVE, COMPLETED, ARCHIVED
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    blocks = relationship(
+        "TimetableBlock",
+        back_populates="timetable",
+        cascade="all, delete-orphan",
+        order_by="TimetableBlock.day_number",
+    )
+
+
+class TimetableBlock(Base):
+    __tablename__ = "timetable_blocks"
+
+    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
+    timetable_id = Column(
+        Integer,
+        ForeignKey("study_timetables.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    day_number = Column(Integer, nullable=False)
+    target_date = Column(Date, nullable=False)
+    window_start = Column(Time, nullable=False)  # e.g. 19:00:00
+    window_deadline = Column(Time, nullable=False)  # e.g. 21:00:00
+    duration_minutes = Column(Integer, nullable=False, default=120)
+    topic = Column(String(128), nullable=False)
+    deliverable_spec = Column(Text, nullable=False)
+    verification_rules = Column(Text, nullable=False)
+    status = Column(String(32), nullable=False, default="PENDING")  # PENDING, IN_PROGRESS, COMPLETED, FORFEIT
+    actual_started_at = Column(DateTime(timezone=True), nullable=True)
+    actual_completed_at = Column(DateTime(timezone=True), nullable=True)
+
+    timetable = relationship("StudyTimetable", back_populates="blocks")
+
 

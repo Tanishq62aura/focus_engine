@@ -211,6 +211,93 @@ def _extract_category_proposal(message: str) -> Optional[dict[str, Any]]:
     return _extract_category_proposal_semantic(message)
 
 
+# ---------------------------------------------------------------------------
+# Moderate Window-Anchored Study Timetable Tool & Extraction
+# ---------------------------------------------------------------------------
+def stage_window_timetable(
+    title: str,
+    track_id: str = "coding",
+    total_days: int = 7,
+    window_start: str = "19:00:00",
+    window_deadline: str = "21:00:00",
+    duration_minutes: int = 120,
+    topics: Optional[list[str]] = None,
+) -> dict[str, Any]:
+    """
+    Gemini Tool Declaration: Stages a 7-day moderate window study timetable.
+    Returns structured confirmation card payload (TIMETABLE_CARD).
+    """
+    from datetime import date, timedelta
+    start_date = date.today()
+
+    default_topics = [
+        "Core Foundations & System Architecture",
+        "Data Structures & Algorithmic Mechanics",
+        "Implementation, Test Harness & Verification",
+        "Edge Case Auditing & Stress Vectors",
+        "Integration & Inter-process Plumbing",
+        "Performance Profiling & Latency Elimination",
+        "Comprehensive Review & Viva Defense Synthesis",
+    ]
+
+    selected_topics = topics or default_topics
+    blocks = []
+    for day in range(1, total_days + 1):
+        target_d = start_date + timedelta(days=day - 1)
+        topic_title = selected_topics[(day - 1) % len(selected_topics)]
+        blocks.append({
+            "day_number": day,
+            "target_date": target_d.isoformat(),
+            "window_start": window_start,
+            "window_deadline": window_deadline,
+            "duration_minutes": duration_minutes,
+            "topic": f"Day {day}: {topic_title}",
+            "deliverable_spec": f"Production-grade code artifacts, verifiable test outputs, and architecture notes for {topic_title}.",
+            "verification_rules": "Git diff commit inspection, automated unit tests passing, and rigorous oral defense.",
+            "status": "PENDING",
+        })
+
+    return {
+        "title": title or "7-Day Moderate Window Study Blueprint",
+        "track_id": track_id or "coding",
+        "total_days": total_days,
+        "blocks": blocks,
+    }
+
+
+def _extract_timetable_proposal(message: str) -> Optional[dict[str, Any]]:
+    """
+    Detects scheduling/timetable intent and invokes stage_window_timetable tool.
+    Handles user prompts like:
+    'Plan my 7 day study timetable for DSA' or 'Schedule a window-anchored timetable for coding'
+    """
+    msg = message.strip()
+    schedule_keywords = [
+        "timetable", "study plan", "study schedule", "schedule my week",
+        "7 day schedule", "7-day plan", "weekly schedule", "window timetable",
+        "schedule study", "plan my study", "plan my week", "plan 7 days"
+    ]
+    if not any(kw in msg.lower() for kw in schedule_keywords):
+        return None
+
+    # Track classification
+    track = "coding"
+    if "aptitude" in msg.lower() or "tnp" in msg.lower():
+        track = "tnp"
+    elif "theory" in msg.lower() or "os" in msg.lower() or "dbms" in msg.lower():
+        track = "theory"
+    elif "writing" in msg.lower() or "doc" in msg.lower():
+        track = "writing"
+    elif "research" in msg.lower():
+        track = "research"
+
+    # Extract clean title
+    title_match = re.search(r"(?:for|on|titled)\s+['\"]?([^'\"\n!?,;]+)['\"]?", msg, re.IGNORECASE)
+    title = f"7-Day Timetable: {title_match.group(1).strip()}" if title_match else f"7-Day {track.title()} Window Timetable"
+
+    return stage_window_timetable(title=title, track_id=track, total_days=7)
+
+
 def _generate_fallback_response(query: str) -> str:
     q = query.lower()
 
@@ -300,6 +387,22 @@ def support_chat(
             session_id=payload.session_id,
             action="propose_category",
             data=proposal,
+        )
+
+    # Check for Window-Anchored Study Timetable Flow
+    timetable_card = _extract_timetable_proposal(user_msg)
+    if timetable_card:
+        reply_msg = (
+            f"📅 I have generated your 7-day moderate window study timetable for '{timetable_card['title']}'. "
+            f"Each daily block is anchored to a structured execution window ({timetable_card['blocks'][0]['window_start']} - "
+            f"{timetable_card['blocks'][0]['window_deadline']}) with mandatory oral defense rules. "
+            f"Confirm below to activate this blueprint."
+        )
+        return SupportChatResponse(
+            reply=reply_msg,
+            session_id=payload.session_id,
+            action="TIMETABLE_CARD",
+            data=timetable_card,
         )
 
     session_ctx = ""

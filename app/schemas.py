@@ -4,7 +4,7 @@ Pydantic v2 request/response schemas for the Focus Engine API.
 """
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime, time
 from typing import Any, Dict, List, Literal, Optional
 
 from pydantic import BaseModel, Field, field_validator, model_validator
@@ -498,5 +498,89 @@ class StreakReport(BaseModel):
     floor_met_today: bool
     last_active_date: Optional[str] = None
     status: str
+
+
+# ---------------------------------------------------------------------------
+# Window-Anchored Study Timetable & Scheduling
+# ---------------------------------------------------------------------------
+class TimetableBlockCreate(BaseModel):
+    day_number: int = Field(..., ge=1, le=365)
+    target_date: date
+    window_start: time
+    window_deadline: time
+    duration_minutes: int = Field(default=120, gt=0)
+    topic: str = Field(..., min_length=1, max_length=128)
+    deliverable_spec: str = Field(..., min_length=1)
+    verification_rules: str = Field(..., min_length=1)
+    status: Literal["PENDING", "IN_PROGRESS", "COMPLETED", "FORFEIT"] = "PENDING"
+
+    @model_validator(mode="after")
+    def validate_window_and_duration(self) -> TimetableBlockCreate:
+        if self.duration_minutes <= 0:
+            raise ValueError("duration_minutes must be > 0")
+        if self.window_deadline <= self.window_start:
+            raise ValueError("window_deadline must be strictly after window_start")
+        return self
+
+
+class TimetableBlockResponse(BaseModel):
+    id: int
+    timetable_id: int
+    day_number: int
+    target_date: date
+    window_start: time
+    window_deadline: time
+    duration_minutes: int
+    topic: str
+    deliverable_spec: str
+    verification_rules: str
+    status: str
+    actual_started_at: Optional[datetime] = None
+    actual_completed_at: Optional[datetime] = None
+
+    model_config = {"from_attributes": True}
+
+
+class StudyTimetableCreate(BaseModel):
+    title: str = Field(..., min_length=1, max_length=128)
+    track_id: str = Field(default="coding", min_length=1, max_length=64)
+    total_days: int = Field(default=7, ge=1, le=30)
+    blocks: List[TimetableBlockCreate] = Field(..., min_length=1)
+
+    @field_validator("blocks")
+    @classmethod
+    def validate_blocks_non_empty(cls, v: List[TimetableBlockCreate]) -> List[TimetableBlockCreate]:
+        if not v:
+            raise ValueError("Timetable must contain at least 1 block")
+        return v
+
+
+class StudyTimetableResponse(BaseModel):
+    id: int
+    user_id: str
+    title: str
+    track_id: str
+    total_days: int
+    status: str
+    created_at: Optional[datetime] = None
+    blocks: List[TimetableBlockResponse] = []
+
+    model_config = {"from_attributes": True}
+
+
+class TimetableActiveResponse(BaseModel):
+    active_timetable: Optional[StudyTimetableResponse] = None
+    today_block: Optional[TimetableBlockResponse] = None
+    is_window_open: bool = False
+    window_status: Literal["UPCOMING", "ACTIVE_WINDOW", "DEADLINE_PASSED", "NO_BLOCK_TODAY"] = "NO_BLOCK_TODAY"
+
+
+class BlockStartResponse(BaseModel):
+    block: TimetableBlockResponse
+    session_id: str
+    early_start: bool = False
+    late_start: bool = False
+    message: str
+
 
 
