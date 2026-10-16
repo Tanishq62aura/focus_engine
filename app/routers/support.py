@@ -56,7 +56,12 @@ try:
 except ImportError:
     _client = None
 
-_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.8-flash")
+MODEL_CASCADE = [
+    os.getenv("GEMINI_MODEL", "gemini-3.8-flash"),
+    "gemini-3.6-flash",
+    "gemini-3.5-flash-lite",
+]
+_MODEL = MODEL_CASCADE[0]
 
 _SYSTEM_PROMPT = """You are the Focus Engine Execution Coach and System Operator.
 Your mission is to provide concise, tactical, high-leverage execution guidance for focused study and deep work.
@@ -593,66 +598,66 @@ def support_chat(
 
     if _client is not None:
         full_prompt = f"{session_ctx}User Question: {user_msg}\n\nProvide tactical coaching response:"
-        max_attempts = 3
-        backoff_delays = [1.5, 3.0]
 
-        for attempt in range(1, max_attempts + 1):
-            try:
-                response = _client.models.generate_content(
-                    model=_MODEL,
-                    contents=full_prompt,
-                    config=genai_types.GenerateContentConfig(
-                        system_instruction=_SYSTEM_PROMPT,
-                        temperature=0.6,
-                        max_output_tokens=500,
-                        tools=[{"function_declarations": [STAGE_WINDOW_TIMETABLE_DECLARATION]}],
-                    ),
-                )
-                # Inspect tool / function calls from Gemini
-                if response and getattr(response, "function_calls", None):
-                    for fc in response.function_calls:
-                        if fc.name == "stage_window_timetable":
-                            args = dict(fc.args) if fc.args else {}
-                            card_payload = execute_stage_window_timetable(db, current_user, args)
-                            reply_msg = (
-                                f"📅 Staged '{card_payload['title']}' ({card_payload['total_days']} days) successfully. "
-                                f"Each daily block is anchored to a structured execution window with mandatory oral defense rules. "
-                                f"Review the scheduled blocks below."
-                            )
-                            return SupportChatResponse(
-                                reply=reply_msg,
-                                session_id=payload.session_id,
-                                action="TIMETABLE_CARD",
-                                data=card_payload,
-                            )
-
-                if response and response.text:
-                    return SupportChatResponse(
-                        reply=response.text.strip(),
-                        session_id=payload.session_id,
+        for model_name in MODEL_CASCADE:
+            model_succeeded = False
+            for attempt in range(1, 3):
+                try:
+                    response = _client.models.generate_content(
+                        model=model_name,
+                        contents=full_prompt,
+                        config=genai_types.GenerateContentConfig(
+                            system_instruction=_SYSTEM_PROMPT,
+                            temperature=0.6,
+                            max_output_tokens=500,
+                            tools=[{"function_declarations": [STAGE_WINDOW_TIMETABLE_DECLARATION]}],
+                        ),
                     )
-                break
+                    # Inspect tool / function calls from Gemini
+                    if response and getattr(response, "function_calls", None):
+                        for fc in response.function_calls:
+                            if fc.name == "stage_window_timetable":
+                                args = dict(fc.args) if fc.args else {}
+                                card_payload = execute_stage_window_timetable(db, current_user, args)
+                                reply_msg = (
+                                    f"📅 Staged '{card_payload['title']}' ({card_payload['total_days']} days) successfully. "
+                                    f"Each daily block is anchored to a structured execution window with mandatory oral defense rules. "
+                                    f"Review the scheduled blocks below."
+                                )
+                                return SupportChatResponse(
+                                    reply=reply_msg,
+                                    session_id=payload.session_id,
+                                    action="TIMETABLE_CARD",
+                                    data=card_payload,
+                                )
 
-            except Exception as err:
-                is_transient = _is_transient_error(err)
-                if is_transient and attempt < max_attempts:
-                    delay = backoff_delays[attempt - 1]
-                    logger.warning(
-                        "Gemini support chat transient upstream error on attempt %d/%d (%s). Retrying in %.1fs...",
-                        attempt,
-                        max_attempts,
+                    if response and response.text:
+                        return SupportChatResponse(
+                            reply=response.text.strip(),
+                            session_id=payload.session_id,
+                        )
+                    model_succeeded = True
+                    break
+
+                except Exception as err:
+                    is_transient = _is_transient_error(err)
+                    if is_transient and attempt < 2:
+                        logger.warning(
+                            "Model %s transient upstream error (attempt %d). Retrying in 1.0s...",
+                            model_name,
+                            attempt,
+                        )
+                        _time.sleep(1.0)
+                        continue
+
+                    logger.info(
+                        "Model %s overloaded or failed (%s). Cascading to next candidate...",
+                        model_name,
                         err,
-                        delay,
                     )
-                    _time.sleep(delay)
-                    continue
+                    break
 
-                logger.warning(
-                    "Gemini support chat call failed (attempt %d/%d): %s. Using heuristic fallback.",
-                    attempt,
-                    max_attempts,
-                    err,
-                )
+            if model_succeeded:
                 break
 
     reply = _generate_fallback_response(user_msg)
