@@ -113,6 +113,12 @@ app = FastAPI(
 )
 
 
+@app.api_route("/healthz", methods=["GET", "HEAD"], tags=["Monitoring"])
+async def health_check():
+    """Zero-overhead endpoint for cron keep-alive pings. Rejects DB queries."""
+    return {"status": "ok", "service": "focus-engine"}
+
+
 @app.on_event("startup")
 def startup_banner():
     local_ip = get_local_ip()
@@ -160,11 +166,6 @@ app.include_router(sessions.router, prefix="/api", tags=["sessions"])
 app.include_router(sessions.router, tags=["sessions"])
 app.include_router(timetables.router, prefix="/api/timetables", tags=["timetables"])
 app.include_router(timetables.router, prefix="/api", tags=["timetables"])
-
-
-@app.api_route("/healthz", methods=["GET", "HEAD"], tags=["Monitoring"])
-async def health_check():
-    return {"status": "ok", "service": "focus-engine"}
 
 
 # ---------------------------------------------------------------------------
