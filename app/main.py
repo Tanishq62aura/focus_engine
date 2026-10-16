@@ -120,6 +120,11 @@ async def health_check():
 
 
 @app.on_event("startup")
+def startup_db():
+    init_db()
+
+
+@app.on_event("startup")
 def startup_banner():
     local_ip = get_local_ip()
     tunnel_url = get_cloudflare_tunnel_url() or "Initializing..."
