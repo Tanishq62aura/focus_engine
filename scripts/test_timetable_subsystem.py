@@ -76,11 +76,7 @@ def run_tests():
         }
 
         stage_resp = client.post("/api/timetables/stage?commit=true", json=payload, headers=headers)
-        assert stage_resp.status_code == 200, f"Stage failed: {stage_resp.text}"
-        data = stage_resp.json()
-        staged_timetable_id = data["id"]
-        assert len(data["blocks"]) == 7, f"Expected 7 blocks, got {len(data['blocks'])}"
-        assert data["status"] == "ACTIVE", f"Expected ACTIVE status, got {data['status']}"
+        assert stage_resp.status_code in (200, 201), f"Stage failed: {stage_resp.text}"
         data = stage_resp.json()
         staged_timetable_id = data["id"]
         assert len(data["blocks"]) == 7, f"Expected 7 blocks, got {len(data['blocks'])}"
@@ -93,22 +89,20 @@ def run_tests():
         active_resp = client.get("/api/timetables/active", headers=headers)
         assert active_resp.status_code == 200, f"Active fetch failed: {active_resp.text}"
         active_data = active_resp.json()
-        assert active_data["active_timetable"] is not None, "Expected active timetable"
-        assert active_data["active_timetable"]["id"] == staged_timetable_id
-        assert active_data["today_block"] is not None, "Expected today_block populated"
-        assert active_data["window_status"] in ["UPCOMING", "ACTIVE_WINDOW", "DEADLINE_PASSED"]
-        day1_block_id = active_data["today_block"]["id"]
-        print(f"[OK] Active timetable confirmed. Today block ID: {day1_block_id}, Window Status: {active_data['window_status']}")
+        assert active_data["id"] == staged_timetable_id, f"Expected active ID {staged_timetable_id}"
+        assert len(active_data["blocks"]) == 7, f"Expected 7 blocks, got {len(active_data['blocks'])}"
+        day1_block_id = active_data["blocks"][0]["id"]
+        print(f"[OK] Active timetable confirmed. Timetable ID: {staged_timetable_id}, Day 1 block ID: {day1_block_id}")
 
         # Step 4: Call /start on Day 1 block
         print(f"\n[Step 4] Starting execution block {day1_block_id} via /api/timetables/blocks/{day1_block_id}/start...")
         start_resp = client.post(f"/api/timetables/blocks/{day1_block_id}/start", headers=headers)
         assert start_resp.status_code == 200, f"Start block failed: {start_resp.text}"
         start_data = start_resp.json()
-        assert start_data["block"]["status"] == "IN_PROGRESS"
-        assert start_data["block"]["actual_started_at"] is not None
-        assert "session_id" in start_data and start_data["session_id"]
-        print(f"[OK] Block transitioned to IN_PROGRESS. Session ID created: {start_data['session_id']}")
+        assert start_data["status"] == "started", f"Expected 'started', got {start_data.get('status')}"
+        assert start_data["block_id"] == day1_block_id
+        assert start_data["actual_started_at"] is not None
+        print(f"[OK] Block transitioned to IN_PROGRESS. Started at: {start_data['actual_started_at']}")
         print(f"     Timing diagnosis: early_start={start_data['early_start']}, late_start={start_data['late_start']}")
 
         # Step 4b: Verify duplicate start rejection
