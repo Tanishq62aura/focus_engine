@@ -2334,14 +2334,39 @@
         const deadlineStr = b.window_deadline ? (b.window_deadline.slice ? b.window_deadline.slice(0, 5) : b.window_deadline) : '21:00';
         const targetDate = b.target_date || '';
 
-        const hasActiveSession = Boolean(activeSessionId || (typeof localStorage !== 'undefined' && localStorage.getItem('active_session_id')));
+        // Hydrate session if block is in progress or active session exists in storage
+        if (!currentSession && !window.activeSession && (b.status === 'IN_PROGRESS' || activeSessionId || (typeof localStorage !== 'undefined' && localStorage.getItem('active_session_id')))) {
+          try {
+            await hydrateActiveSession();
+          } catch (_) {}
+        }
+
+        // Case A vs Case B: Verify whether an active session is ACTUALLY running in client state
+        const isSessionRunning = Boolean(
+          (activeSessionId || currentSession || window.activeSession) &&
+          timerInterval &&
+          document.getElementById('hud-active') &&
+          !document.getElementById('hud-active').classList.contains('hidden')
+        );
+
         let buttonHtml = '';
-        if (b.status === 'IN_PROGRESS' && hasActiveSession) {
-          buttonHtml = `
-            <button id="btn-timetable-start-${b.id}" onclick="mobileNavTo('hud')" class="mt-2 px-4 py-2 bg-amber-600 hover:bg-amber-500 text-white text-xs font-bold rounded shadow transition active:scale-95 cursor-pointer">
-              Session In Progress
-            </button>
-          `;
+        if (b.status === 'IN_PROGRESS') {
+          if (isSessionRunning) {
+            // Case A: Active session IS currently running in state
+            buttonHtml = `
+              <button id="btn-timetable-start-${b.id}" onclick="mobileNavTo('hud')" class="mt-2 px-4 py-2 bg-amber-600 hover:bg-amber-500 text-white text-xs font-bold rounded shadow transition active:scale-95 cursor-pointer flex items-center gap-1.5">
+                <span class="w-2 h-2 rounded-full bg-amber-200 animate-ping inline-block"></span>
+                <span>Session Active (View Timer)</span>
+              </button>
+            `;
+          } else {
+            // Case B: No active session is running in state (orphaned or restarted tab)
+            buttonHtml = `
+              <button id="btn-timetable-start-${b.id}" onclick="startTimetableBlock(${b.id})" class="mt-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold rounded shadow transition active:scale-95 cursor-pointer flex items-center gap-1.5">
+                <span>Resume / Start Session</span>
+              </button>
+            `;
+          }
         } else {
           buttonHtml = `
             <button id="btn-timetable-start-${b.id}" onclick="startTimetableBlock(${b.id})" class="mt-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold rounded shadow transition active:scale-95 cursor-pointer">
@@ -2379,9 +2404,114 @@
     }
     window.loadActiveTimetableHUD = loadActiveTimetableHUD;
     window.initHUD = loadActiveTimetableHUD;
-    window.loadDashboard = function() {
+
+    function renderActiveSession(sessionData, taskData) {
+      if (!sessionData) return;
+      const sid = sessionData.session_id || sessionData.id;
+      if (sid) {
+        activeSessionId = sid;
+        try { localStorage.setItem('active_session_id', sid); } catch (_) {}
+      }
+      currentSession = sessionData;
+      window.currentSession = sessionData;
+      window.activeSession = sessionData;
+
+      const activeBlock = window.activeTimetableBlock;
+      const targetDuration = (activeBlock && activeBlock.duration_minutes) || sessionData.duration_minutes || 60;
+      const resolvedTask = taskData || (tasks || []).find(t => t.id === sessionData.task_id) || {
+        id: sessionData.task_id || 'timetable-task',
+        title: (activeBlock && activeBlock.topic) || 'Focus Block Session',
+        category: (window.activeTimetable && window.activeTimetable.track_id) || 'coding',
+        min_goal: Math.max(15, Math.floor(targetDuration * 0.4)),
+        target_goal: targetDuration,
+        stretch_goal: Math.floor(targetDuration * 1.25),
+      };
+
+      activeTaskId = resolvedTask.id;
+      activeTaskData = resolvedTask;
+
+      if (sessionData.actual_started_at || sessionData.started_at) {
+        sessionStartTime = new Date(sessionData.actual_started_at || sessionData.started_at);
+      } else {
+        sessionStartTime = new Date();
+      }
+
+      distCounts = { phone: 0, youtube: 0, overthinking: 0, other: 0 };
+      pasteWarningShown = false;
+      microStartConfirmed = false;
+      isFiveMinInterventionActive = Boolean(sessionData.is_five_min_intervention);
+
+      // Transition HUD view from idle to active
+      triggerHaptic('heavy');
+      const hudIdle = document.getElementById('hud-idle');
+      const hudActive = document.getElementById('hud-active');
+      if (hudIdle) hudIdle.classList.add('hidden');
+      if (hudActive) hudActive.classList.remove('hidden');
+
+      const taskNameEl = document.getElementById('session-task-name');
+      if (taskNameEl) taskNameEl.textContent = activeTaskData?.title || 'Focus Session';
+
+      if (typeof updateGoalBanner === 'function') updateGoalBanner();
+      if (typeof updateZenViewData === 'function') updateZenViewData();
+
+      const lb = document.getElementById('latency-banner');
+      if (lb) {
+        if (isFiveMinInterventionActive) {
+          lb.textContent = `[5-Min Micro-Start Active]: Step 1 – Write down 1 specific test case or heading. (Phone >3m)`;
+          lb.classList.remove('hidden');
+        } else if (sessionData.start_latency_min > 0) {
+          lb.textContent = `Started ${sessionData.start_latency_min} min late (latency recorded)`;
+          lb.classList.remove('hidden');
+        } else {
+          lb.classList.add('hidden');
+        }
+      }
+
+      startTimer();
+      if (!pastePollInterval) {
+        pastePollInterval = setInterval(pollPasteFlag, 5000);
+      }
+      if (typeof soundscapeEngine !== 'undefined') {
+        soundscapeEngine.onSessionStateChanged('active');
+      }
+      if (window.currentSettings && window.currentSettings.auto_zen_mode) {
+        enterZenMode();
+      }
+    }
+    window.renderActiveSession = renderActiveSession;
+
+    async function hydrateActiveSession() {
+      const storedId = localStorage.getItem('active_session_id');
+      try {
+        const active = await api('GET', '/sessions/active');
+        if (active && active.id) {
+          renderActiveSession(active);
+          return active;
+        }
+      } catch (err) {
+        if (storedId) {
+          try {
+            const sess = await api('GET', `/sessions/${storedId}`);
+            if (sess && !sess.ended_at) {
+              renderActiveSession(sess);
+              return sess;
+            }
+          } catch (_) {}
+        }
+        localStorage.removeItem('active_session_id');
+        activeSessionId = null;
+        currentSession = null;
+        window.activeSession = null;
+        window.currentSession = null;
+      }
+      return null;
+    }
+    window.hydrateActiveSession = hydrateActiveSession;
+
+    window.loadDashboard = async function() {
       if (typeof loadStats === 'function') loadStats();
       if (typeof loadTasks === 'function') loadTasks();
+      await hydrateActiveSession();
       loadActiveTimetableHUD();
     };
 
@@ -2398,13 +2528,16 @@
         const res = await api('POST', `/api/timetables/blocks/${blockId}/start`);
         toast(`Day ${res.day_number || ''} timetable block session started.`, 'success');
 
-        // If backend returned active session info on reconnection
-        if (res.session_id && !activeSessionId) {
-          activeSessionId = res.session_id;
-          try { localStorage.setItem('active_session_id', res.session_id); } catch (_) {}
+        const sid = res.session_id || res.id;
+        if (sid) {
+          activeSessionId = sid;
+          try { localStorage.setItem('active_session_id', sid); } catch (_) {}
         }
+        currentSession = res;
+        window.currentSession = res;
+        window.activeSession = res;
 
-        const activeBlock = window.activeTimetableBlock;
+        const activeBlock = window.activeTimetableBlock || (window.activeTimetable && (window.activeTimetable.blocks || []).find(b => b.id === blockId));
         const topic = (activeBlock && activeBlock.topic) || `Timetable Day ${res.day_number || blockId}`;
         const duration = (activeBlock && activeBlock.duration_minutes) || res.duration_minutes || 60;
         const track = (window.activeTimetable && window.activeTimetable.track_id) || 'coding';
@@ -2432,11 +2565,12 @@
 
         if (matchingTask) {
           selectTask(matchingTask.id);
-          if (!activeSessionId) {
-            await startSession();
-          }
         }
 
+        // Immediately invoke HUD timer initializer so circular timer starts ticking
+        renderActiveSession(res, matchingTask);
+
+        // Refresh target card state
         await loadActiveTimetableHUD();
         mobileNavTo('hud');
       } catch (err) {
@@ -2455,6 +2589,9 @@
     // ---------------------------------------------------------------
     const API = '';  // same origin
     let activeSessionId = null;
+    let currentSession = null;
+    window.currentSession = null;
+    window.activeSession = null;
     let activeTaskId = null;
     let activeTaskData = null;
     let timerInterval = null;
@@ -2819,16 +2956,20 @@
             }
           })
           .catch(() => {})
-          .finally(() => {
-            checkAuthStatus();
+          .finally(async () => {
+            await checkAuthStatus();
+            await hydrateActiveSession();
             loadTasks();
             loadStats();
             loadTracks();
           });
       } else {
-        checkAuthStatus();
-        loadTasks();
-        loadStats();
+        (async () => {
+          await checkAuthStatus();
+          await hydrateActiveSession();
+          loadTasks();
+          loadStats();
+        })();
       }
 
       // Initialize network connection mode
@@ -3256,6 +3397,9 @@
         });
         activeSessionId = res.id;
         try { localStorage.setItem('active_session_id', res.id); } catch (_) {}
+        currentSession = res;
+        window.currentSession = res;
+        window.activeSession = res;
         activeTaskId = taskId;
         activeTaskData = selectedTask;
         sessionStartTime = new Date();
@@ -3418,8 +3562,15 @@
         clearInterval(pastePollInterval);
         pastePollInterval = null;
       }
+      if (timerInterval) {
+        clearInterval(timerInterval);
+        timerInterval = null;
+      }
       try { localStorage.removeItem('active_session_id'); } catch (_) {}
       activeSessionId = null;
+      currentSession = null;
+      window.currentSession = null;
+      window.activeSession = null;
       activeTaskId = null;
       isFiveMinInterventionActive = false;
       microStartConfirmed = false;
