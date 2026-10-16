@@ -344,6 +344,9 @@
           <span class="w-2.5 h-2.5 rounded-full bg-emerald-500 inline-block"></span> Focus HUD
         </h2>
 
+        <!-- Active Timetable Target Block Widget -->
+        <div id="hud-timetable-widget" class="hidden mb-4"></div>
+
         <!-- No-session state -->
         <div id="hud-idle" class="text-center py-12">
           <div class="w-16 h-16 mx-auto mb-4 text-zinc-600 flex items-center justify-center"><svg class="w-14 h-14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg></div>
@@ -1750,6 +1753,7 @@
       if (target === 'hud') {
         const el = document.getElementById('hud-section');
         if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        if (typeof loadActiveTimetableHUD === 'function') loadActiveTimetableHUD();
       } else if (target === 'tasks') {
         const el = document.getElementById('task-form');
         if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -2108,6 +2112,12 @@
         if (res.action === 'propose_category' && res.data) {
           renderCategoryProposalCard(botBubble, res.data);
         }
+
+        // Check for Interactive Timetable Card Flow
+        const timetablePayload = res.timetable || (res.action === 'TIMETABLE_CARD' ? res.data : null) || res.data?.timetable;
+        if (timetablePayload && (timetablePayload.blocks || timetablePayload.title)) {
+          renderTimetableChatCard(botBubble, timetablePayload);
+        }
       } catch (err) {
         // Render validation and execution rejections cleanly inside the chat bubble without generic toasts
         const rawErr = err.message || 'Execution request failed.';
@@ -2217,6 +2227,175 @@
 
       containerEl.appendChild(card);
     }
+
+    function renderTimetableChatCard(containerEl, data) {
+      const timetable = data.timetable || data;
+      const blocks = timetable.blocks || [];
+      const totalDays = timetable.total_days || blocks.length || 7;
+      const title = timetable.title || 'Study Timetable';
+
+      const card = document.createElement('div');
+      card.className = 'mt-3 p-3 bg-zinc-900/90 border border-zinc-800 rounded-lg shadow-inner font-mono text-xs space-y-2';
+
+      const blocksHtml = blocks.map((b, idx) => {
+        const dayIdx = b.day_index || b.day_number || (idx + 1);
+        const startStr = b.window_start ? (b.window_start.slice ? b.window_start.slice(0, 5) : b.window_start) : '19:00';
+        const deadlineStr = b.window_deadline ? (b.window_deadline.slice ? b.window_deadline.slice(0, 5) : b.window_deadline) : '21:00';
+        const windowStr = b.window || `${startStr} - ${deadlineStr}`;
+        const status = b.status || 'PENDING';
+        const isPending = status === 'PENDING';
+        const statusClass = isPending ? 'bg-zinc-800 text-zinc-400 border-zinc-700' : 'bg-emerald-500/10 text-emerald-300 border-emerald-500/30';
+
+        return `
+          <div class="py-1.5 px-2 rounded bg-zinc-950/60 border border-zinc-850 flex items-center justify-between gap-2 flex-wrap">
+            <div class="flex items-center gap-2">
+              <span class="font-bold text-zinc-200">Day ${dayIdx}</span>
+              <span class="text-zinc-500 text-[11px]">${escapeHtml(windowStr)}</span>
+            </div>
+            <div class="text-[11px] text-zinc-300 font-sans truncate flex-1 min-w-[120px]" title="${escapeHtml(b.topic || '')}">${escapeHtml(b.topic || 'Focus Module')}</div>
+            <span class="px-1.5 py-0.5 rounded text-[10px] font-mono border ${statusClass}">${escapeHtml(status)}</span>
+          </div>
+        `;
+      }).join('');
+
+      card.innerHTML = `
+        <div class="flex items-center justify-between gap-2 border-b border-zinc-800 pb-2 mb-2">
+          <span class="font-bold text-zinc-100 font-sans text-xs truncate" title="${escapeHtml(title)}">${escapeHtml(title)}</span>
+          <span class="px-2 py-0.5 rounded text-[10px] font-mono bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 flex-shrink-0">
+            ${totalDays} Days
+          </span>
+        </div>
+        <div class="space-y-1.5 max-h-56 overflow-y-auto pr-1">
+          ${blocksHtml}
+        </div>
+        <button id="btn-view-hud-timetable" class="mt-2 w-full py-1.5 px-3 bg-emerald-600 hover:bg-emerald-500 text-white rounded font-sans font-medium text-xs transition active:scale-95 cursor-pointer">
+          View on HUD
+        </button>
+      `;
+
+      const viewBtn = card.querySelector('#btn-view-hud-timetable');
+      if (viewBtn) {
+        viewBtn.addEventListener('click', () => {
+          const drawer = document.getElementById('drawer-support-chat');
+          if (drawer) drawer.classList.add('hidden');
+          mobileNavTo('hud');
+          if (typeof loadActiveTimetableHUD === 'function') {
+            loadActiveTimetableHUD();
+          }
+        });
+      }
+
+      containerEl.appendChild(card);
+    }
+    window.renderTimetableChatCard = renderTimetableChatCard;
+
+    async function loadActiveTimetableHUD() {
+      const widget = document.getElementById('hud-timetable-widget');
+      if (!widget) return;
+
+      try {
+        const timetable = await api('GET', '/api/timetables/active');
+        if (!timetable || !timetable.blocks || timetable.blocks.length === 0) {
+          widget.classList.add('hidden');
+          return;
+        }
+
+        window.activeTimetable = timetable;
+
+        // Find active block: in progress, or next pending block
+        const inProgressBlock = timetable.blocks.find(b => b.status === 'IN_PROGRESS');
+        const nextPendingBlock = timetable.blocks.find(b => b.status === 'PENDING');
+        const b = inProgressBlock || nextPendingBlock;
+
+        if (!b) {
+          widget.classList.add('hidden');
+          return;
+        }
+
+        window.activeTimetableBlock = b;
+
+        const startStr = b.window_start ? (b.window_start.slice ? b.window_start.slice(0, 5) : b.window_start) : '19:00';
+        const deadlineStr = b.window_deadline ? (b.window_deadline.slice ? b.window_deadline.slice(0, 5) : b.window_deadline) : '21:00';
+        const targetDate = b.target_date || '';
+
+        widget.innerHTML = `
+          <div class="p-4 rounded-xl bg-zinc-900/90 border border-emerald-500/40 shadow-lg font-mono text-xs space-y-2.5">
+            <div class="flex items-center justify-between gap-2">
+              <div class="flex items-center gap-2">
+                <span class="w-2.5 h-2.5 rounded-full ${b.status === 'IN_PROGRESS' ? 'bg-amber-400' : 'bg-emerald-400'} animate-pulse"></span>
+                <span class="text-xs font-bold font-sans text-zinc-100">Target Window: ${escapeHtml(b.topic)}</span>
+              </div>
+              <span class="px-2 py-0.5 rounded text-[10px] bg-zinc-800 text-zinc-300 border border-zinc-700 flex-shrink-0">
+                Day ${b.day_number} of ${timetable.total_days}
+              </span>
+            </div>
+            <div class="text-xs text-zinc-400 flex items-center gap-2 flex-wrap">
+              <span>Time Range: ${escapeHtml(startStr)} - ${escapeHtml(deadlineStr)} (${escapeHtml(targetDate)})</span>
+              <span>•</span>
+              <span>${b.duration_minutes}m target</span>
+            </div>
+            ${b.deliverable_spec ? `<div class="text-[11px] text-zinc-400 font-sans italic leading-relaxed">Deliverable: ${escapeHtml(b.deliverable_spec)}</div>` : ''}
+            <div>
+              <button onclick="startTimetableBlock(${b.id})" class="mt-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold rounded shadow transition active:scale-95 cursor-pointer">Start Block Session</button>
+            </div>
+          </div>
+        `;
+        widget.classList.remove('hidden');
+      } catch (err) {
+        widget.classList.add('hidden');
+      }
+    }
+    window.loadActiveTimetableHUD = loadActiveTimetableHUD;
+    window.initHUD = loadActiveTimetableHUD;
+    window.loadDashboard = function() {
+      if (typeof loadStats === 'function') loadStats();
+      if (typeof loadTasks === 'function') loadTasks();
+      loadActiveTimetableHUD();
+    };
+
+    async function startTimetableBlock(blockId) {
+      try {
+        const res = await api('POST', `/api/timetables/blocks/${blockId}/start`);
+        toast(`Day ${res.day_number || ''} timetable block session started.`, 'success');
+
+        const activeBlock = window.activeTimetableBlock;
+        const topic = (activeBlock && activeBlock.topic) || `Timetable Day ${res.day_number || blockId}`;
+        const duration = (activeBlock && activeBlock.duration_minutes) || res.duration_minutes || 60;
+        const track = (window.activeTimetable && window.activeTimetable.track_id) || 'coding';
+
+        // Check if task exists, or auto-create task
+        let matchingTask = (tasks || []).find(t => t.title === topic);
+        if (!matchingTask) {
+          try {
+            matchingTask = await api('POST', '/tasks', {
+              title: topic,
+              category: track,
+              priority: 3,
+              estimated_duration_min: duration,
+              min_goal: Math.max(15, Math.floor(duration * 0.4)),
+              target_goal: duration,
+              stretch_goal: Math.floor(duration * 1.25)
+            });
+            tasks.unshift(matchingTask);
+            renderTaskDropdown(tasks);
+            renderTaskList(tasks);
+          } catch (createErr) {
+            console.warn('Could not auto-create task for timetable block:', createErr);
+          }
+        }
+
+        if (matchingTask) {
+          selectTask(matchingTask.id);
+          await startSession();
+        }
+
+        await loadActiveTimetableHUD();
+        mobileNavTo('hud');
+      } catch (err) {
+        toast('Failed to start timetable block: ' + err.message, 'error');
+      }
+    }
+    window.startTimetableBlock = startTimetableBlock;
 
     // State
     // ---------------------------------------------------------------
@@ -2704,6 +2883,7 @@
       loadCircadianHeatmap();
       loadStreakBadge();
       loadDailyScorecard();
+      loadActiveTimetableHUD();
       loadAllSettings();
     }
 
@@ -3179,6 +3359,7 @@
       document.getElementById('timer-circle').style.borderColor = '';
       document.getElementById('timer-display').style.color = '';
       document.getElementById('latency-banner').classList.add('hidden');
+      if (typeof loadActiveTimetableHUD === 'function') loadActiveTimetableHUD();
     }
 
     function resetDistCounts() {
