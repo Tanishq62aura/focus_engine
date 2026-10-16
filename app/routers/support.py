@@ -7,6 +7,7 @@ import json
 import logging
 import os
 import re
+from datetime import date, datetime, time, timedelta
 from typing import Any, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -72,6 +73,11 @@ System Architecture Knowledge:
    - When asked how to tackle novel/non-coding domains (writing, research, reading, design), break them into atomic, verifiable checkpoints.
    - When asked how viva defense judges non-code work, explain that it evaluates conceptual depth, logical coherence, and deductive reasoning rather than rote recall.
    - Tone: Stoic, disciplined, razor-sharp, and highly actionable. No unnecessary pleasantries.
+
+3. Study Timetables & Scheduling Tool:
+   - You have explicit permission to generate moderate window-anchored multi-day study timetables.
+   - Whenever the user asks to plan, generate, or schedule a study curriculum or timetable, you must invoke the `stage_window_timetable` tool.
+   - Formulate practical window times (e.g., 19:00 start, 21:00 deadline), realistic durations (e.g., 120m), atomic topics, and clear deliverable specifications.
 """
 
 
@@ -214,62 +220,192 @@ def _extract_category_proposal(message: str) -> Optional[dict[str, Any]]:
 # ---------------------------------------------------------------------------
 # Moderate Window-Anchored Study Timetable Tool & Extraction
 # ---------------------------------------------------------------------------
-def stage_window_timetable(
-    title: str,
-    track_id: str = "coding",
-    total_days: int = 7,
-    window_start: str = "19:00:00",
-    window_deadline: str = "21:00:00",
-    duration_minutes: int = 120,
-    topics: Optional[list[str]] = None,
+STAGE_WINDOW_TIMETABLE_DECLARATION = {
+    "name": "stage_window_timetable",
+    "description": (
+        "Stages a moderate window-anchored multi-day study timetable into the database. "
+        "Use this when the user asks to plan, generate, or schedule a study curriculum or timetable."
+    ),
+    "parameters": {
+        "type": "OBJECT",
+        "properties": {
+            "title": {
+                "type": "STRING",
+                "description": "Descriptive title of the timetable (e.g. '7-Day Python Basics')"
+            },
+            "track_id": {
+                "type": "STRING",
+                "description": "Category or track identifier (e.g. 'coding', 'cybersecurity')"
+            },
+            "total_days": {
+                "type": "INTEGER",
+                "description": "Total number of daily blocks planned (e.g. 7)"
+            },
+            "blocks": {
+                "type": "ARRAY",
+                "description": "List of window-anchored daily study blocks",
+                "items": {
+                    "type": "OBJECT",
+                    "properties": {
+                        "day_number": {"type": "INTEGER", "description": "Day index starting at 1"},
+                        "days_from_today": {"type": "INTEGER", "description": "0 for today, 1 for tomorrow, etc."},
+                        "window_start": {"type": "STRING", "description": "Earliest start time in HH:MM format (e.g. '19:00')"},
+                        "window_deadline": {"type": "STRING", "description": "Latest start cutoff in HH:MM format (e.g. '21:00')"},
+                        "duration_minutes": {"type": "INTEGER", "description": "Session focus duration in minutes (e.g. 120)"},
+                        "topic": {"type": "STRING", "description": "Core subject or module topic"},
+                        "deliverable_spec": {"type": "STRING", "description": "Concrete artifact produced during the unassisted session"},
+                        "verification_rules": {"type": "STRING", "description": "Key assessment criteria for the viva audit"}
+                    },
+                    "required": [
+                        "day_number", "days_from_today", "window_start",
+                        "window_deadline", "duration_minutes", "topic",
+                        "deliverable_spec", "verification_rules"
+                    ]
+                }
+            }
+        },
+        "required": ["title", "track_id", "total_days", "blocks"]
+    }
+}
+
+
+def _parse_time_str(time_val: Any) -> time:
+    """Parse time string supporting HH:MM and HH:MM:SS format."""
+    if isinstance(time_val, time):
+        return time_val
+    s = str(time_val).strip()
+    parts = s.split(":")
+    if len(parts) == 2:
+        return time(int(parts[0]), int(parts[1]))
+    elif len(parts) >= 3:
+        return time(int(parts[0]), int(parts[1]), int(parts[2]))
+    raise ValueError(f"Invalid time format: {time_val}")
+
+
+def execute_stage_window_timetable(
+    db: Session,
+    current_user: Any,
+    args: dict[str, Any],
 ) -> dict[str, Any]:
     """
-    Gemini Tool Declaration: Stages a 7-day moderate window study timetable.
-    Returns structured confirmation card payload (TIMETABLE_CARD).
+    Executes the database transaction to stage a moderate window-anchored timetable:
+    - Parses window_start and window_deadline into datetime.time objects (supports HH:MM and HH:MM:SS).
+    - Computes target_date = date.today() + timedelta(days=block['days_from_today']).
+    - Validates window_deadline > window_start and duration_minutes > 0.
+    - Builds a StudyTimetableCreate schema instance.
+    - Archives any prior active timetable for current_user.
+    - Inserts StudyTimetable and child TimetableBlock records.
+    - Returns an interactive confirmation payload dictionary with type="TIMETABLE_CARD".
     """
-    from datetime import date, timedelta
-    start_date = date.today()
+    from app.models import StudyTimetable, TimetableBlock
+    from app.schemas import StudyTimetableCreate, TimetableBlockCreate
 
-    default_topics = [
-        "Core Foundations & System Architecture",
-        "Data Structures & Algorithmic Mechanics",
-        "Implementation, Test Harness & Verification",
-        "Edge Case Auditing & Stress Vectors",
-        "Integration & Inter-process Plumbing",
-        "Performance Profiling & Latency Elimination",
-        "Comprehensive Review & Viva Defense Synthesis",
-    ]
+    user_id = getattr(current_user, "id", current_user)
+    if not isinstance(user_id, str):
+        user_id = str(user_id)
 
-    selected_topics = topics or default_topics
-    blocks = []
-    for day in range(1, total_days + 1):
-        target_d = start_date + timedelta(days=day - 1)
-        topic_title = selected_topics[(day - 1) % len(selected_topics)]
-        blocks.append({
-            "day_number": day,
-            "target_date": target_d.isoformat(),
-            "window_start": window_start,
-            "window_deadline": window_deadline,
-            "duration_minutes": duration_minutes,
-            "topic": f"Day {day}: {topic_title}",
-            "deliverable_spec": f"Production-grade code artifacts, verifiable test outputs, and architecture notes for {topic_title}.",
-            "verification_rules": "Git diff commit inspection, automated unit tests passing, and rigorous oral defense.",
-            "status": "PENDING",
-        })
+    title = str(args.get("title") or "7-Day Study Timetable").strip()
+    track_id = str(args.get("track_id") or "coding").strip()
+    raw_blocks = args.get("blocks") or []
+    total_days = int(args.get("total_days") or len(raw_blocks) or 7)
+
+    today = date.today()
+    parsed_blocks: list[TimetableBlockCreate] = []
+
+    for b in raw_blocks:
+        day_num = int(b.get("day_number", 1))
+        days_from_today = int(b.get("days_from_today", day_num - 1))
+        target_date = today + timedelta(days=days_from_today)
+
+        w_start = _parse_time_str(b.get("window_start", "19:00"))
+        w_deadline = _parse_time_str(b.get("window_deadline", "21:00"))
+        duration = int(b.get("duration_minutes", 120))
+
+        if w_deadline <= w_start:
+            raise ValueError(f"Day {day_num}: window_deadline ({w_deadline}) must be strictly after window_start ({w_start})")
+        if duration <= 0:
+            raise ValueError(f"Day {day_num}: duration_minutes must be > 0")
+
+        block_create = TimetableBlockCreate(
+            day_number=day_num,
+            target_date=target_date,
+            window_start=w_start,
+            window_deadline=w_deadline,
+            duration_minutes=duration,
+            topic=str(b.get("topic") or f"Module Day {day_num}"),
+            deliverable_spec=str(b.get("deliverable_spec") or f"Deliverable Day {day_num}"),
+            verification_rules=str(b.get("verification_rules") or "Verified via automated tests and viva defense"),
+        )
+        parsed_blocks.append(block_create)
+
+    # Validate via Pydantic model
+    timetable_create = StudyTimetableCreate(
+        title=title,
+        track_id=track_id,
+        total_days=total_days,
+        blocks=parsed_blocks,
+    )
+
+    # Archive previous active timetables for this user
+    db.query(StudyTimetable).filter(
+        StudyTimetable.user_id == user_id,
+        StudyTimetable.status == "ACTIVE",
+    ).update({"status": "ARCHIVED"})
+
+    # Insert new StudyTimetable row
+    timetable = StudyTimetable(
+        user_id=user_id,
+        title=timetable_create.title,
+        track_id=timetable_create.track_id,
+        total_days=timetable_create.total_days,
+        status="ACTIVE",
+    )
+    db.add(timetable)
+    db.flush()
+
+    # Insert child TimetableBlock rows
+    for b in parsed_blocks:
+        block_row = TimetableBlock(
+            timetable_id=timetable.id,
+            day_number=b.day_number,
+            target_date=b.target_date,
+            window_start=b.window_start,
+            window_deadline=b.window_deadline,
+            duration_minutes=b.duration_minutes,
+            topic=b.topic,
+            deliverable_spec=b.deliverable_spec,
+            verification_rules=b.verification_rules,
+            status="PENDING",
+        )
+        db.add(block_row)
+
+    db.commit()
+    db.refresh(timetable)
 
     return {
-        "title": title or "7-Day Moderate Window Study Blueprint",
-        "track_id": track_id or "coding",
-        "total_days": total_days,
-        "blocks": blocks,
+        "type": "TIMETABLE_CARD",
+        "timetable_id": timetable.id,
+        "title": timetable.title,
+        "total_days": timetable.total_days,
+        "blocks": [
+            {
+                "id": b.id,
+                "day_number": b.day_number,
+                "target_date": str(b.target_date),
+                "window": f"{b.window_start.strftime('%H:%M')} - {b.window_deadline.strftime('%H:%M')}",
+                "duration": f"{b.duration_minutes}m",
+                "topic": b.topic,
+                "deliverable": b.deliverable_spec,
+            }
+            for b in timetable.blocks
+        ],
+        "message": f"Staged '{timetable.title}' ({timetable.total_days} days) successfully.",
     }
 
 
 def _extract_timetable_proposal(message: str) -> Optional[dict[str, Any]]:
     """
-    Detects scheduling/timetable intent and invokes stage_window_timetable tool.
-    Handles user prompts like:
-    'Plan my 7 day study timetable for DSA' or 'Schedule a window-anchored timetable for coding'
+    Detects scheduling/timetable intent and generates tool argument dictionary.
     """
     msg = message.strip()
     schedule_keywords = [
@@ -295,7 +431,36 @@ def _extract_timetable_proposal(message: str) -> Optional[dict[str, Any]]:
     title_match = re.search(r"(?:for|on|titled)\s+['\"]?([^'\"\n!?,;]+)['\"]?", msg, re.IGNORECASE)
     title = f"7-Day Timetable: {title_match.group(1).strip()}" if title_match else f"7-Day {track.title()} Window Timetable"
 
-    return stage_window_timetable(title=title, track_id=track, total_days=7)
+    default_topics = [
+        "Core Foundations & System Architecture",
+        "Data Structures & Algorithmic Mechanics",
+        "Implementation, Test Harness & Verification",
+        "Edge Case Auditing & Stress Vectors",
+        "Integration & Inter-process Plumbing",
+        "Performance Profiling & Latency Elimination",
+        "Comprehensive Review & Viva Defense Synthesis",
+    ]
+
+    blocks = []
+    for day in range(1, 8):
+        topic_title = default_topics[(day - 1) % len(default_topics)]
+        blocks.append({
+            "day_number": day,
+            "days_from_today": day - 1,
+            "window_start": "19:00",
+            "window_deadline": "21:00",
+            "duration_minutes": 120,
+            "topic": f"Day {day}: {topic_title}",
+            "deliverable_spec": f"Production-grade artifacts and verification notes for {topic_title}.",
+            "verification_rules": "Automated unit tests passing, clean commit diff, and oral defense.",
+        })
+
+    return {
+        "title": title,
+        "track_id": track,
+        "total_days": 7,
+        "blocks": blocks,
+    }
 
 
 def _generate_fallback_response(query: str) -> str:
@@ -389,21 +554,24 @@ def support_chat(
             data=proposal,
         )
 
-    # Check for Window-Anchored Study Timetable Flow
-    timetable_card = _extract_timetable_proposal(user_msg)
-    if timetable_card:
-        reply_msg = (
-            f"📅 I have generated your 7-day moderate window study timetable for '{timetable_card['title']}'. "
-            f"Each daily block is anchored to a structured execution window ({timetable_card['blocks'][0]['window_start']} - "
-            f"{timetable_card['blocks'][0]['window_deadline']}) with mandatory oral defense rules. "
-            f"Confirm below to activate this blueprint."
-        )
-        return SupportChatResponse(
-            reply=reply_msg,
-            session_id=payload.session_id,
-            action="TIMETABLE_CARD",
-            data=timetable_card,
-        )
+    # Check for Window-Anchored Study Timetable Flow (Direct semantic extractor / fallback)
+    timetable_intent = _extract_timetable_proposal(user_msg)
+    if timetable_intent:
+        try:
+            card_payload = execute_stage_window_timetable(db, current_user, timetable_intent)
+            reply_msg = (
+                f"📅 I have generated and staged your {card_payload['total_days']}-day moderate window study timetable for '{card_payload['title']}'. "
+                f"Each daily block is anchored to a structured execution window with mandatory oral defense rules. "
+                f"Review the scheduled blocks below."
+            )
+            return SupportChatResponse(
+                reply=reply_msg,
+                session_id=payload.session_id,
+                action="TIMETABLE_CARD",
+                data=card_payload,
+            )
+        except Exception as err:
+            logger.warning("Direct timetable staging from extractor failed: %s", err)
 
     session_ctx = ""
     if payload.session_id:
@@ -420,9 +588,28 @@ def support_chat(
                 config=genai_types.GenerateContentConfig(
                     system_instruction=_SYSTEM_PROMPT,
                     temperature=0.6,
-                    max_output_tokens=300,
+                    max_output_tokens=500,
+                    tools=[{"function_declarations": [STAGE_WINDOW_TIMETABLE_DECLARATION]}],
                 ),
             )
+            # Inspect tool / function calls from Gemini
+            if response and getattr(response, "function_calls", None):
+                for fc in response.function_calls:
+                    if fc.name == "stage_window_timetable":
+                        args = dict(fc.args) if fc.args else {}
+                        card_payload = execute_stage_window_timetable(db, current_user, args)
+                        reply_msg = (
+                            f"📅 Staged '{card_payload['title']}' ({card_payload['total_days']} days) successfully. "
+                            f"Each daily block is anchored to a structured execution window with mandatory oral defense rules. "
+                            f"Review the scheduled blocks below."
+                        )
+                        return SupportChatResponse(
+                            reply=reply_msg,
+                            session_id=payload.session_id,
+                            action="TIMETABLE_CARD",
+                            data=card_payload,
+                        )
+
             if response and response.text:
                 return SupportChatResponse(
                     reply=response.text.strip(),
