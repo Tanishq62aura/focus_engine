@@ -3423,7 +3423,7 @@
     async function loadDailyScorecard(targetDate) {
       try {
         const query = targetDate ? `?date=${targetDate}` : '';
-        const res = await api('GET', `/reports/daily-scorecard${query}`);
+        const res = await api('GET', `/api/reports/daily-scorecard${query}`);
         if (!res) return;
 
         const gauge = document.getElementById('scorecard-gauge');
@@ -4179,7 +4179,7 @@
     // ---------------------------------------------------------------
     async function loadCircadianHeatmap() {
       try {
-        const res = await api('GET', '/reports/circadian-matrix?days=14');
+        const res = await api('GET', '/api/reports/circadian-matrix?days=14');
         renderCircadianHeatmap(res);
       } catch (err) {
         console.warn('Failed to load circadian matrix:', err);
@@ -4232,7 +4232,7 @@
     // ---------------------------------------------------------------
     async function loadStreakBadge() {
       try {
-        const res = await api('GET', '/reports/streak');
+        const res = await api('GET', '/api/reports/streak');
         const countLabel = document.getElementById('streak-count-label');
         const badge = document.getElementById('streak-badge');
         if (countLabel) {
@@ -4254,7 +4254,7 @@
 
     async function loadStreakReport() {
       try {
-        const res = await api('GET', '/reports/streak');
+        const res = await api('GET', '/api/reports/streak');
         toast(`Strict Streak: ${res.current_streak_days} days (Longest: ${res.longest_streak_days}d). Verified today: ${res.today_verified_blocks}/${res.daily_floor_target} blocks.`, res.floor_met_today ? 'success' : 'info');
       } catch (err) {
         toast('Streak load error: ' + err.message, 'error');

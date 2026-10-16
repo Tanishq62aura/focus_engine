@@ -167,6 +167,7 @@ app.include_router(support.router, prefix="/api/support", tags=["support"])
 app.include_router(support.router, prefix="/api", tags=["support"])
 app.include_router(support.router, tags=["support"])
 app.include_router(reports.router, prefix="/api", tags=["reports"])
+app.include_router(reports.router, tags=["reports"])
 app.include_router(sessions.router, prefix="/api", tags=["sessions"])
 app.include_router(sessions.router, tags=["sessions"])
 app.include_router(timetables.router, prefix="/api/timetables", tags=["timetables"])
@@ -689,6 +690,7 @@ def submit_active_viva(
 # Reports
 # ---------------------------------------------------------------------------
 @app.get("/reports/today", response_model=schemas.TodayReport)
+@app.get("/api/reports/today", response_model=schemas.TodayReport)
 def today_report(
     db: Session = Depends(get_db),
     current_user: str = Depends(get_current_user),
@@ -697,6 +699,7 @@ def today_report(
 
 
 @app.get("/reports/friction-analysis", response_model=schemas.FrictionAnalysisReport)
+@app.get("/api/reports/friction-analysis", response_model=schemas.FrictionAnalysisReport)
 def friction_analysis(
     days: int = 7,
     db: Session = Depends(get_db),
@@ -706,6 +709,7 @@ def friction_analysis(
 
 
 @app.get("/reports/excuse-clusters", response_model=schemas.ExcuseClusterReport)
+@app.get("/api/reports/excuse-clusters", response_model=schemas.ExcuseClusterReport)
 def excuse_clusters_report(
     days: int = 14,
     db: Session = Depends(get_db),
