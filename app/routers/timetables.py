@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 
 from app import crud
 from app.database import get_db
-from app.models import StudyTimetable, TimetableBlock
+from app.models import FocusSession, StudyTimetable, Task, TimetableBlock
 from app.routers.auth import get_current_user
 from app.schemas import StudyTimetableCreate, StudyTimetableResponse, TimetableBlockResponse
 
@@ -78,6 +78,12 @@ def get_active_timetable(
     )
     if not timetable:
         raise HTTPException(status_code=404, detail="No active study timetable found")
+
+    # Find next target block: in-progress block, or first non-completed block
+    target = next((b for b in timetable.blocks if b.status != "COMPLETED"), None)
+    timetable.active_target_block = target
+    timetable.target_block = target
+
     return timetable
 
 
@@ -112,6 +118,8 @@ def start_block_session(
 
     if block.status == "IN_PROGRESS":
         if active_session:
+            active_session.timetable_block_id = block.id
+            db.commit()
             logger.info(
                 "Timetable block %d is already IN_PROGRESS with active FocusSession %s. Reconnecting user %s.",
                 block.id,
@@ -166,8 +174,42 @@ def start_block_session(
             early_start = False
             late_start = False
 
+    utc_now = datetime.now(timezone.utc)
     block.status = "IN_PROGRESS"
-    block.actual_started_at = datetime.now(timezone.utc)
+    block.actual_started_at = utc_now
+
+    session_id = None
+    if active_session:
+        active_session.timetable_block_id = block.id
+        session_id = active_session.id
+    else:
+        # Create corresponding task and session for seamless tracking
+        task = (
+            db.query(Task)
+            .filter(Task.user_id == user_id, Task.title == block.topic)
+            .first()
+        )
+        if not task:
+            task = Task(
+                user_id=user_id,
+                title=block.topic,
+                category="coding",
+                estimated_duration_min=block.duration_minutes,
+            )
+            db.add(task)
+            db.flush()
+
+        new_sess = FocusSession(
+            user_id=user_id,
+            task_id=task.id,
+            started_at=utc_now,
+            ended_at=None,
+            timetable_block_id=block.id,
+        )
+        db.add(new_sess)
+        db.flush()
+        session_id = new_sess.id
+
     db.commit()
     db.refresh(block)
 
@@ -179,4 +221,5 @@ def start_block_session(
         "early_start": early_start,
         "late_start": late_start,
         "actual_started_at": block.actual_started_at,
+        "session_id": session_id,
     }

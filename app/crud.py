@@ -574,3 +574,81 @@ def get_weekly_friction_report(
         "culprit": culprit,
         "high_friction_culprit": culprit,
     }
+
+
+def finalize_timetable_block_lifecycle(
+    db: Session,
+    user_id: str,
+    session: Optional[models.FocusSession] = None,
+    block_id: Optional[int] = None,
+    success: bool = True,
+) -> Optional[models.TimetableBlock]:
+    """
+    Updates the lifecycle of a timetable block when viva defense concludes or session finishes.
+    - If success is True:
+        status = 'COMPLETED', actual_completed_at = now
+        If all blocks in parent StudyTimetable are COMPLETED -> timetable.status = 'COMPLETED'
+    - If success is False:
+        status = 'MISSED' (or penalty state)
+    """
+    block = None
+    if block_id:
+        block = (
+            db.query(models.TimetableBlock)
+            .join(models.StudyTimetable)
+            .filter(
+                models.TimetableBlock.id == block_id,
+                models.StudyTimetable.user_id == user_id,
+            )
+            .first()
+        )
+    elif session and getattr(session, "timetable_block_id", None):
+        block = (
+            db.query(models.TimetableBlock)
+            .filter(models.TimetableBlock.id == session.timetable_block_id)
+            .first()
+        )
+
+    if not block:
+        # Fallback to current user's IN_PROGRESS block
+        block = (
+            db.query(models.TimetableBlock)
+            .join(models.StudyTimetable)
+            .filter(
+                models.StudyTimetable.user_id == user_id,
+                models.TimetableBlock.status == "IN_PROGRESS",
+            )
+            .first()
+        )
+
+    if not block:
+        return None
+
+    now = datetime.now(timezone.utc)
+    if success:
+        block.status = "COMPLETED"
+        block.actual_completed_at = now
+        timetable = (
+            db.query(models.StudyTimetable)
+            .filter(models.StudyTimetable.id == block.timetable_id)
+            .first()
+        )
+        if timetable:
+            remaining = (
+                db.query(models.TimetableBlock)
+                .filter(
+                    models.TimetableBlock.timetable_id == timetable.id,
+                    models.TimetableBlock.id != block.id,
+                    models.TimetableBlock.status != "COMPLETED",
+                )
+                .count()
+            )
+            if remaining == 0:
+                timetable.status = "COMPLETED"
+    else:
+        block.status = "MISSED"
+
+    db.commit()
+    db.refresh(block)
+    return block
+

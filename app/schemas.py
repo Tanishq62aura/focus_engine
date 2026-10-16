@@ -568,6 +568,8 @@ class StudyTimetableResponse(BaseModel):
     status: str
     created_at: Optional[datetime] = None
     blocks: List[TimetableBlockResponse] = []
+    active_target_block: Optional[TimetableBlockResponse] = None
+    target_block: Optional[TimetableBlockResponse] = None
 
     class Config:
         from_attributes = True

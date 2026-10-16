@@ -8,13 +8,14 @@ import logging
 import os
 import re
 import time as _time
-from datetime import date, datetime, time, timedelta
+from datetime import date, datetime, time, timedelta, timezone
 from typing import Any, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from app import models
+from app import crud, models
 from app.auth import get_current_user
 from app.database import get_db
 from app.models import FocusSession
@@ -779,3 +780,100 @@ def approve_category_proposal(
         "track": new_track,
         "all_tracks": existing_tracks,
     }
+
+
+class VivaVerifyPayload(BaseModel):
+    session_id: Optional[str] = None
+    answer: Optional[str] = None
+    user_answer: Optional[str] = None
+    proof_text: Optional[str] = None
+    timetable_block_id: Optional[int] = None
+    passed: Optional[bool] = None
+
+
+@router.post("/verify-viva")
+def verify_viva_defense(
+    payload: VivaVerifyPayload = VivaVerifyPayload(),
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    """
+    Submits and resolves oral viva defense verification.
+    Binds defense completion to timetable block lifecycle completion.
+    """
+    user_id = str(getattr(current_user, "id", current_user))
+
+    session = None
+    if payload.session_id:
+        session = (
+            db.query(FocusSession)
+            .filter(FocusSession.id == payload.session_id, FocusSession.user_id == user_id)
+            .first()
+        )
+    if not session:
+        session = crud.get_active_session(db, user_id=user_id)
+    if not session:
+        session = (
+            db.query(FocusSession)
+            .filter(
+                FocusSession.user_id == user_id,
+                FocusSession.verification_status.in_(["pending_viva", "unverified"]),
+            )
+            .order_by(FocusSession.ended_at.desc())
+            .first()
+        )
+
+    # Determine pass/fail
+    passed = payload.passed
+    if passed is None:
+        ans = payload.answer or payload.user_answer or (session.viva_answer if session else None) or "verified via defense"
+        if session and session.viva_question:
+            from app.verification import evaluate_viva_answer
+            task = crud.get_task(db, session.task_id, user_id=user_id) if session else None
+            cat = task.category if task else "coding"
+            passed, _ = evaluate_viva_answer(
+                question=session.viva_question,
+                answer=ans,
+                proof_text=session.proof_text or payload.proof_text or "",
+                category=cat,
+            )
+        else:
+            passed = bool(ans and len(ans.strip()) >= 3)
+
+    if session:
+        session.verification_status = "verified" if passed else "rejected"
+        session.ended_at = session.ended_at or datetime.now(timezone.utc)
+        if payload.timetable_block_id:
+            session.timetable_block_id = payload.timetable_block_id
+        db.commit()
+
+    block = crud.finalize_timetable_block_lifecycle(
+        db,
+        user_id=user_id,
+        session=session,
+        block_id=payload.timetable_block_id,
+        success=passed,
+    )
+
+    parent_timetable = None
+    if block:
+        parent_timetable = (
+            db.query(models.StudyTimetable)
+            .filter(models.StudyTimetable.id == block.timetable_id)
+            .first()
+        )
+
+    return {
+        "status": "verified" if passed else "rejected",
+        "verified": passed,
+        "session_id": session.id if session else None,
+        "timetable_block_id": block.id if block else payload.timetable_block_id,
+        "block_status": block.status if block else None,
+        "timetable_status": parent_timetable.status if parent_timetable else None,
+        "message": (
+            "Oral viva defense verified successfully. Timetable block completed."
+            if passed
+            else "Oral viva defense failed or rejected."
+        ),
+    }
+

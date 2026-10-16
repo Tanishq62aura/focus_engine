@@ -2302,10 +2302,26 @@
 
         window.activeTimetable = timetable;
 
-        // Find active block: in progress, or next pending block
+        // Filter blocks to find first block with status !== 'COMPLETED'
+        const nonCompletedBlocks = (timetable.blocks || []).filter(b => b.status !== 'COMPLETED');
+        if (nonCompletedBlocks.length === 0) {
+          window.activeTimetableBlock = null;
+          widget.innerHTML = `
+            <div class="p-4 rounded-xl bg-gradient-to-r from-emerald-950/70 to-zinc-900 border border-emerald-500/50 shadow-xl font-mono text-xs space-y-2 text-center">
+              <div class="text-sm font-bold font-sans text-emerald-300">
+                🎉 Timetable Completed! All scheduled blocks defended and verified.
+              </div>
+              <div class="text-zinc-400 text-[11px] font-sans">
+                Curriculum <span class="text-zinc-200 font-semibold">${escapeHtml(timetable.title || '')}</span> (${timetable.total_days} Days) fully defended.
+              </div>
+            </div>
+          `;
+          widget.classList.remove('hidden');
+          return;
+        }
+
         const inProgressBlock = timetable.blocks.find(b => b.status === 'IN_PROGRESS');
-        const nextPendingBlock = timetable.blocks.find(b => b.status === 'PENDING');
-        const b = inProgressBlock || nextPendingBlock;
+        const b = inProgressBlock || nonCompletedBlocks[0];
 
         if (!b) {
           widget.classList.add('hidden');
@@ -3584,6 +3600,9 @@
         document.getElementById('viva-step-3').classList.remove('hidden');
         loadStats();
         loadFrictionReport();
+        if (typeof loadActiveTimetableHUD === 'function') {
+          loadActiveTimetableHUD();
+        }
         toast(passed ? 'Viva passed!' : 'Viva failed. Session rejected.', passed ? 'success' : 'error');
       } catch(e) {
         toast('Submit failed: ' + e.message, 'error');

@@ -81,6 +81,7 @@ def init_db():
                     ALTER TABLE user_settings ADD COLUMN IF NOT EXISTS current_streak_days INTEGER DEFAULT 0;
                     ALTER TABLE user_settings ADD COLUMN IF NOT EXISTS longest_streak_days INTEGER DEFAULT 0;
                     ALTER TABLE user_settings ADD COLUMN IF NOT EXISTS daily_floor_target INTEGER DEFAULT 2;
+                    ALTER TABLE focus_sessions ADD COLUMN IF NOT EXISTS timetable_block_id INTEGER REFERENCES timetable_blocks(id) ON DELETE SET NULL;
                 """))
                 conn.commit()
             except Exception:
@@ -96,6 +97,11 @@ def init_db():
                     if "user_id" not in cols:
                         try:
                             conn.execute(text(f"ALTER TABLE {t} ADD COLUMN user_id VARCHAR(64) DEFAULT 'dev-user' NOT NULL"))
+                        except Exception:
+                            pass
+                    if t == "focus_sessions" and "timetable_block_id" not in cols:
+                        try:
+                            conn.execute(text("ALTER TABLE focus_sessions ADD COLUMN timetable_block_id INTEGER REFERENCES timetable_blocks(id)"))
                         except Exception:
                             pass
             if inspector.has_table("user_settings"):

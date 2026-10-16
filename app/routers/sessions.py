@@ -275,6 +275,15 @@ def submit_viva(
         category=category,
     )
     updated = crud.resolve_viva(db, session_id, ans_text, feedback, passed, user_id=current_user)
+
+    # Wire timetable block lifecycle completion
+    crud.finalize_timetable_block_lifecycle(
+        db,
+        user_id=current_user,
+        session=session,
+        success=passed,
+    )
+
     return schemas.VivaResult(
         session_id=session_id,
         verification_status=updated.verification_status if updated else "unverified",
@@ -437,6 +446,14 @@ def emergency_abort_session(
             streak_broken = True
 
     db.commit()
+
+    # Penalize/mark MISSED on timetable block if aborting during block
+    crud.finalize_timetable_block_lifecycle(
+        db,
+        user_id=current_user,
+        session=session,
+        success=False,
+    )
 
     task = crud.get_task(db, session.task_id, user_id=current_user)
     task_title = task.title if task else "Focus Session"

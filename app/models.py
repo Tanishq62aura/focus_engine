@@ -94,6 +94,7 @@ class FocusSession(Base):
     user_id = Column(String(64), nullable=False, index=True, default="dev-user")
     task_id = Column(String(36), ForeignKey("tasks.id", ondelete="CASCADE"), nullable=False)
     schedule_id = Column(String(36), ForeignKey("schedules.id", ondelete="SET NULL"), nullable=True)
+    timetable_block_id = Column(Integer, ForeignKey("timetable_blocks.id", ondelete="SET NULL"), nullable=True)
     is_five_min_intervention = Column(Boolean, nullable=False, default=False)
 
     started_at = Column(DateTime(timezone=True), nullable=True)
@@ -284,5 +285,14 @@ class TimetableBlock(Base):
     actual_completed_at = Column(DateTime(timezone=True), nullable=True)
 
     timetable = relationship("StudyTimetable", back_populates="blocks")
+
+    @property
+    def completed_at(self):
+        return self.actual_completed_at
+
+    @completed_at.setter
+    def completed_at(self, value):
+        self.actual_completed_at = value
+
 
 
