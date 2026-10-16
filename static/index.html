@@ -2404,6 +2404,7 @@
     let activeTaskId = null;
     let activeTaskData = null;
     let timerInterval = null;
+    let pastePollInterval = null;
     let sessionStartTime = null;
     let pasteWarningShown = false;
     let distCounts = { phone: 0, youtube: 0, overthinking: 0, other: 0 };
@@ -2784,7 +2785,9 @@
       initModalTouchGestures();
 
       // Poll for paste flags every 5s when a session is active
-      setInterval(pollPasteFlag, 5000);
+      if (!pastePollInterval) {
+        pastePollInterval = setInterval(pollPasteFlag, 5000);
+      }
     });
 
     // ---------------------------------------------------------------
@@ -2854,15 +2857,23 @@
           if (path !== '/auth/status') {
             openAuthModal();
           }
-          throw new Error(errorDetail || 'Authentication required: please sign in.');
+          const authErr = new Error(errorDetail || 'Authentication required: please sign in.');
+          authErr.status = 401;
+          throw authErr;
         }
         if (res.status === 422) {
-          throw new Error(`Validation error: ${errorDetail}`);
+          const valErr = new Error(`Validation error: ${errorDetail}`);
+          valErr.status = 422;
+          throw valErr;
         }
         if (res.status >= 500) {
-          throw new Error(`Server error (${res.status}): ${errorDetail}`);
+          const srvErr = new Error(`Server error (${res.status}): ${errorDetail}`);
+          srvErr.status = res.status;
+          throw srvErr;
         }
-        throw new Error(errorDetail || `HTTP error ${res.status}`);
+        const httpErr = new Error(errorDetail || `HTTP error ${res.status}`);
+        httpErr.status = res.status;
+        throw httpErr;
       }
 
       return await res.json();
@@ -3190,6 +3201,7 @@
           is_five_min_intervention: isFiveMin || isCriticalTrack,
         });
         activeSessionId = res.id;
+        try { localStorage.setItem('active_session_id', res.id); } catch (_) {}
         activeTaskId = taskId;
         activeTaskData = selectedTask;
         sessionStartTime = new Date();
@@ -3224,6 +3236,9 @@
         }
 
         startTimer();
+        if (!pastePollInterval) {
+          pastePollInterval = setInterval(pollPasteFlag, 5000);
+        }
         if (typeof soundscapeEngine !== 'undefined') {
           soundscapeEngine.onSessionStateChanged('active');
         }
@@ -3345,6 +3360,11 @@
     }
 
     function resetHUD() {
+      if (pastePollInterval) {
+        clearInterval(pastePollInterval);
+        pastePollInterval = null;
+      }
+      try { localStorage.removeItem('active_session_id'); } catch (_) {}
       activeSessionId = null;
       activeTaskId = null;
       isFiveMinInterventionActive = false;
@@ -3414,15 +3434,27 @@
     // ---------------------------------------------------------------
     async function pollPasteFlag() {
       if (!activeSessionId || pasteWarningShown) return;
-      // Check session state for paste flag
+      // Check session state for paste flag using authenticated api helper
       try {
-        const r = await fetch(`/sessions/${activeSessionId}`).then(r => r.ok ? r.json() : null).catch(() => null);
+        const r = await api('GET', `/sessions/${activeSessionId}`);
         if (r && r.pasted_burst_detected && !pasteWarningShown) {
           pasteWarningShown = true;
           document.getElementById('paste-warning').classList.remove('hidden');
           toast('Paste burst flagged by VS Code watchdog!', 'warning');
         }
-      } catch(e) { /* ignore */ }
+      } catch (err) {
+        const status = err && err.status;
+        const msg = (err && err.message) || '';
+        // If 401 Unauthorized or 404 Not Found, cancel interval to halt infinite polling
+        if (status === 401 || status === 404 || /401|404|Authentication required|Not Found/i.test(msg)) {
+          if (pastePollInterval) {
+            clearInterval(pastePollInterval);
+            pastePollInterval = null;
+          }
+          try { localStorage.removeItem('active_session_id'); } catch (_) {}
+          activeSessionId = null;
+        }
+      }
     }
 
     // ---------------------------------------------------------------
