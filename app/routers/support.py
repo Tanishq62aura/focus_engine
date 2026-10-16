@@ -7,6 +7,7 @@ import json
 import logging
 import os
 import re
+import time as _time
 from datetime import date, datetime, time, timedelta
 from typing import Any, Optional
 
@@ -22,6 +23,19 @@ from app.schemas import CategoryApprovalRequest, SupportChatRequest, SupportChat
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+
+def _is_transient_error(err: Exception) -> bool:
+    """Detects transient 503 UNAVAILABLE or 429 RESOURCE_EXHAUSTED errors."""
+    code = getattr(err, "code", None) or getattr(err, "status_code", None)
+    if code in (429, 503):
+        return True
+    status_str = str(getattr(err, "status", "")).upper()
+    if status_str in ("UNAVAILABLE", "RESOURCE_EXHAUSTED"):
+        return True
+    err_str = str(err).upper()
+    return any(marker in err_str for marker in ("503", "429", "UNAVAILABLE", "RESOURCE_EXHAUSTED", "RESOURCE EXHAUSTED"))
+
 
 SYSTEM_DEFAULT_SLUGS = frozenset({"coding", "tnp", "theory", "writing", "research"})
 MAX_TRACK_LIMIT = 30
@@ -578,43 +592,68 @@ def support_chat(
             session_ctx = f"\n[Active Context: Task '{sess.task.title}', Category '{sess.task.category}']\n"
 
     if _client is not None:
-        try:
-            full_prompt = f"{session_ctx}User Question: {user_msg}\n\nProvide tactical coaching response:"
-            response = _client.models.generate_content(
-                model=_MODEL,
-                contents=full_prompt,
-                config=genai_types.GenerateContentConfig(
-                    system_instruction=_SYSTEM_PROMPT,
-                    temperature=0.6,
-                    max_output_tokens=500,
-                    tools=[{"function_declarations": [STAGE_WINDOW_TIMETABLE_DECLARATION]}],
-                ),
-            )
-            # Inspect tool / function calls from Gemini
-            if response and getattr(response, "function_calls", None):
-                for fc in response.function_calls:
-                    if fc.name == "stage_window_timetable":
-                        args = dict(fc.args) if fc.args else {}
-                        card_payload = execute_stage_window_timetable(db, current_user, args)
-                        reply_msg = (
-                            f"📅 Staged '{card_payload['title']}' ({card_payload['total_days']} days) successfully. "
-                            f"Each daily block is anchored to a structured execution window with mandatory oral defense rules. "
-                            f"Review the scheduled blocks below."
-                        )
-                        return SupportChatResponse(
-                            reply=reply_msg,
-                            session_id=payload.session_id,
-                            action="TIMETABLE_CARD",
-                            data=card_payload,
-                        )
+        full_prompt = f"{session_ctx}User Question: {user_msg}\n\nProvide tactical coaching response:"
+        max_attempts = 3
+        backoff_delays = [1.5, 3.0]
 
-            if response and response.text:
-                return SupportChatResponse(
-                    reply=response.text.strip(),
-                    session_id=payload.session_id,
+        for attempt in range(1, max_attempts + 1):
+            try:
+                response = _client.models.generate_content(
+                    model=_MODEL,
+                    contents=full_prompt,
+                    config=genai_types.GenerateContentConfig(
+                        system_instruction=_SYSTEM_PROMPT,
+                        temperature=0.6,
+                        max_output_tokens=500,
+                        tools=[{"function_declarations": [STAGE_WINDOW_TIMETABLE_DECLARATION]}],
+                    ),
                 )
-        except Exception as err:
-            logger.warning("Gemini support chat call failed: %s. Using heuristic fallback.", err)
+                # Inspect tool / function calls from Gemini
+                if response and getattr(response, "function_calls", None):
+                    for fc in response.function_calls:
+                        if fc.name == "stage_window_timetable":
+                            args = dict(fc.args) if fc.args else {}
+                            card_payload = execute_stage_window_timetable(db, current_user, args)
+                            reply_msg = (
+                                f"📅 Staged '{card_payload['title']}' ({card_payload['total_days']} days) successfully. "
+                                f"Each daily block is anchored to a structured execution window with mandatory oral defense rules. "
+                                f"Review the scheduled blocks below."
+                            )
+                            return SupportChatResponse(
+                                reply=reply_msg,
+                                session_id=payload.session_id,
+                                action="TIMETABLE_CARD",
+                                data=card_payload,
+                            )
+
+                if response and response.text:
+                    return SupportChatResponse(
+                        reply=response.text.strip(),
+                        session_id=payload.session_id,
+                    )
+                break
+
+            except Exception as err:
+                is_transient = _is_transient_error(err)
+                if is_transient and attempt < max_attempts:
+                    delay = backoff_delays[attempt - 1]
+                    logger.warning(
+                        "Gemini support chat transient upstream error on attempt %d/%d (%s). Retrying in %.1fs...",
+                        attempt,
+                        max_attempts,
+                        err,
+                        delay,
+                    )
+                    _time.sleep(delay)
+                    continue
+
+                logger.warning(
+                    "Gemini support chat call failed (attempt %d/%d): %s. Using heuristic fallback.",
+                    attempt,
+                    max_attempts,
+                    err,
+                )
+                break
 
     reply = _generate_fallback_response(user_msg)
     return SupportChatResponse(reply=reply, session_id=payload.session_id)
