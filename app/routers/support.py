@@ -96,6 +96,7 @@ System Architecture Knowledge:
 3. Study Timetables & Scheduling Tool:
    - You have explicit permission to generate moderate window-anchored multi-day study timetables.
    - Whenever the user asks to plan, generate, or schedule a study curriculum or timetable, you must invoke the `stage_window_timetable` tool.
+   - When the user requests a study timetable, identify the target duration N (between 1 and 14). Pass total_days=N to `stage_window_timetable` and generate exactly N elements in the `blocks` array corresponding to Day 1 through Day N.
    - Formulate practical window times (e.g., 19:00 start, 21:00 deadline), realistic durations (e.g., 120m), atomic topics, and clear deliverable specifications.
 """
 
@@ -258,7 +259,10 @@ STAGE_WINDOW_TIMETABLE_DECLARATION = {
             },
             "total_days": {
                 "type": "INTEGER",
-                "description": "Total number of daily blocks planned (e.g. 7)"
+                "description": (
+                    "Total duration in days (integer between 1 and 14). You MUST extract the exact "
+                    "day count explicitly stated by the user (e.g., 3, 5, 10). Do NOT default to 7 if another number is requested."
+                )
             },
             "blocks": {
                 "type": "ARRAY",
@@ -323,15 +327,21 @@ def execute_stage_window_timetable(
     if not isinstance(user_id, str):
         user_id = str(user_id)
 
-    title = str(args.get("title") or "7-Day Study Timetable").strip()
-    track_id = str(args.get("track_id") or "coding").strip()
     raw_blocks = args.get("blocks") or []
-    total_days = int(args.get("total_days") or len(raw_blocks) or 7)
+    blocks = raw_blocks
+    total_days = int(args.get("total_days") or len(blocks) or 7)
+
+    # Enforce consistency between blocks and total_days before persisting
+    if len(blocks) != total_days:
+        total_days = len(blocks)
+
+    title = str(args.get("title") or f"{total_days}-Day Study Timetable").strip()
+    track_id = str(args.get("track_id") or "coding").strip()
 
     today = date.today()
     parsed_blocks: list[TimetableBlockCreate] = []
 
-    for b in raw_blocks:
+    for b in blocks:
         day_num = int(b.get("day_number", 1))
         days_from_today = int(b.get("days_from_today", day_num - 1))
         target_date = today + timedelta(days=days_from_today)
@@ -354,6 +364,10 @@ def execute_stage_window_timetable(
             verification_rules=str(b.get("verification_rules") or "Verified via automated tests and viva defense"),
         )
         parsed_blocks.append(block_create)
+
+    # Re-verify consistency before persisting
+    if len(parsed_blocks) != total_days:
+        total_days = len(parsed_blocks)
 
     # Validate via Pydantic model
     timetable_create = StudyTimetableCreate(
@@ -427,10 +441,12 @@ def _extract_timetable_proposal(message: str) -> Optional[dict[str, Any]]:
     msg = message.strip()
     schedule_keywords = [
         "timetable", "study plan", "study schedule", "schedule my week",
-        "7 day schedule", "7-day plan", "weekly schedule", "window timetable",
-        "schedule study", "plan my study", "plan my week", "plan 7 days"
+        "weekly schedule", "window timetable", "schedule study",
+        "plan my study", "plan my week", "study curriculum"
     ]
-    if not any(kw in msg.lower() for kw in schedule_keywords):
+    has_keyword = any(kw in msg.lower() for kw in schedule_keywords)
+    has_day_plan = bool(re.search(r"\b\d+\s*[- ]\s*day\s+(?:plan|schedule|timetable|curriculum)\b", msg, re.IGNORECASE))
+    if not (has_keyword or has_day_plan):
         return None
 
     # Track classification
@@ -444,9 +460,20 @@ def _extract_timetable_proposal(message: str) -> Optional[dict[str, Any]]:
     elif "research" in msg.lower():
         track = "research"
 
+    # Extract duration in days if stated (1-14)
+    days_match = re.search(r"(\d+)\s*[- ]\s*days?", msg, re.IGNORECASE)
+    duration_days = 7
+    if days_match:
+        try:
+            d_val = int(days_match.group(1))
+            if 1 <= d_val <= 14:
+                duration_days = d_val
+        except Exception:
+            pass
+
     # Extract clean title
     title_match = re.search(r"(?:for|on|titled)\s+['\"]?([^'\"\n!?,;]+)['\"]?", msg, re.IGNORECASE)
-    title = f"7-Day Timetable: {title_match.group(1).strip()}" if title_match else f"7-Day {track.title()} Window Timetable"
+    title = f"{duration_days}-Day Timetable: {title_match.group(1).strip()}" if title_match else f"{duration_days}-Day {track.title()} Window Timetable"
 
     default_topics = [
         "Core Foundations & System Architecture",
@@ -459,7 +486,7 @@ def _extract_timetable_proposal(message: str) -> Optional[dict[str, Any]]:
     ]
 
     blocks = []
-    for day in range(1, 8):
+    for day in range(1, duration_days + 1):
         topic_title = default_topics[(day - 1) % len(default_topics)]
         blocks.append({
             "day_number": day,
@@ -475,7 +502,7 @@ def _extract_timetable_proposal(message: str) -> Optional[dict[str, Any]]:
     return {
         "title": title,
         "track_id": track,
-        "total_days": 7,
+        "total_days": duration_days,
         "blocks": blocks,
     }
 
