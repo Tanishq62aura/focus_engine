@@ -541,7 +541,7 @@ class StudyTimetableCreate(BaseModel):
     title: str = Field(..., min_length=1, max_length=128)
     track_id: str = "coding"
     total_days: int = Field(7, ge=1, le=30)
-    blocks: List[TimetableBlockCreate]
+    blocks: List[TimetableBlockCreate] = Field(..., min_length=1)
 
 
 class StudyTimetableResponse(BaseModel):
