@@ -75,7 +75,7 @@ def stage_timetable(
             topic=b.topic,
             deliverable_spec=b.deliverable_spec,
             verification_rules=b.verification_rules,
-            status=b.status or "PENDING",
+            status=getattr(b, "status", "PENDING") or "PENDING",
         )
         db.add(block)
 

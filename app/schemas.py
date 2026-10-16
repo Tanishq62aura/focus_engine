@@ -503,19 +503,18 @@ class StreakReport(BaseModel):
 # ---------------------------------------------------------------------------
 # Window-Anchored Study Timetable & Scheduling
 # ---------------------------------------------------------------------------
-class TimetableBlockCreate(BaseModel):
-    day_number: int = Field(..., ge=1, le=365)
+class TimetableBlockBase(BaseModel):
+    day_number: int = Field(..., ge=1)
     target_date: date
     window_start: time
     window_deadline: time
-    duration_minutes: int = Field(default=120, gt=0)
+    duration_minutes: int = Field(..., gt=0)
     topic: str = Field(..., min_length=1, max_length=128)
-    deliverable_spec: str = Field(..., min_length=1)
-    verification_rules: str = Field(..., min_length=1)
-    status: Literal["PENDING", "IN_PROGRESS", "COMPLETED", "FORFEIT"] = "PENDING"
+    deliverable_spec: str
+    verification_rules: str
 
     @model_validator(mode="after")
-    def validate_window_and_duration(self) -> TimetableBlockCreate:
+    def validate_window(self):
         if self.duration_minutes <= 0:
             raise ValueError("duration_minutes must be > 0")
         if self.window_deadline <= self.window_start:
@@ -523,36 +522,26 @@ class TimetableBlockCreate(BaseModel):
         return self
 
 
-class TimetableBlockResponse(BaseModel):
+class TimetableBlockCreate(TimetableBlockBase):
+    pass
+
+
+class TimetableBlockResponse(TimetableBlockBase):
     id: int
     timetable_id: int
-    day_number: int
-    target_date: date
-    window_start: time
-    window_deadline: time
-    duration_minutes: int
-    topic: str
-    deliverable_spec: str
-    verification_rules: str
     status: str
     actual_started_at: Optional[datetime] = None
     actual_completed_at: Optional[datetime] = None
 
-    model_config = {"from_attributes": True}
+    class Config:
+        from_attributes = True
 
 
 class StudyTimetableCreate(BaseModel):
     title: str = Field(..., min_length=1, max_length=128)
-    track_id: str = Field(default="coding", min_length=1, max_length=64)
-    total_days: int = Field(default=7, ge=1, le=30)
-    blocks: List[TimetableBlockCreate] = Field(..., min_length=1)
-
-    @field_validator("blocks")
-    @classmethod
-    def validate_blocks_non_empty(cls, v: List[TimetableBlockCreate]) -> List[TimetableBlockCreate]:
-        if not v:
-            raise ValueError("Timetable must contain at least 1 block")
-        return v
+    track_id: str = "coding"
+    total_days: int = Field(7, ge=1, le=30)
+    blocks: List[TimetableBlockCreate]
 
 
 class StudyTimetableResponse(BaseModel):
@@ -565,7 +554,8 @@ class StudyTimetableResponse(BaseModel):
     created_at: Optional[datetime] = None
     blocks: List[TimetableBlockResponse] = []
 
-    model_config = {"from_attributes": True}
+    class Config:
+        from_attributes = True
 
 
 class TimetableActiveResponse(BaseModel):
