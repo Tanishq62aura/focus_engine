@@ -162,6 +162,11 @@ app.include_router(timetables.router, prefix="/api/timetables", tags=["timetable
 app.include_router(timetables.router, prefix="/api", tags=["timetables"])
 
 
+@app.api_route("/healthz", methods=["GET", "HEAD"], tags=["Monitoring"])
+async def health_check():
+    return {"status": "ok", "service": "focus-engine"}
+
+
 # ---------------------------------------------------------------------------
 # Root – serve the frontend HUD
 # ---------------------------------------------------------------------------
