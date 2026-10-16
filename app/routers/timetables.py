@@ -104,8 +104,28 @@ def start_block_session(
 
     now = datetime.now()
     now_time = now.time()
-    early_start = now_time < block.window_start
-    late_start = now_time > block.window_deadline
+    cur_mins = now_time.hour * 60 + now_time.minute
+    start_mins = block.window_start.hour * 60 + block.window_start.minute
+    deadline_mins = block.window_deadline.hour * 60 + block.window_deadline.minute
+
+    if deadline_mins > start_mins:
+        early_start = cur_mins < start_mins
+        late_start = cur_mins > deadline_mins
+    else:
+        # Cross-midnight window (e.g. 22:30 to 00:30)
+        if cur_mins >= start_mins or cur_mins <= deadline_mins:
+            early_start = False
+            late_start = False
+        elif cur_mins < start_mins and cur_mins > deadline_mins:
+            if cur_mins - deadline_mins < start_mins - cur_mins:
+                early_start = False
+                late_start = True
+            else:
+                early_start = True
+                late_start = False
+        else:
+            early_start = False
+            late_start = False
 
     block.status = "IN_PROGRESS"
     block.actual_started_at = datetime.now(timezone.utc)

@@ -42,7 +42,7 @@ try:
 except ImportError:
     _client = None
 
-_MODEL = "gemini-2.5-flash"
+_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.8-flash")
 
 _SYSTEM_PROMPT = """You are the Focus Engine Execution Coach and System Operator.
 Your mission is to provide concise, tactical, high-leverage execution guidance for focused study and deep work.
@@ -321,8 +321,6 @@ def execute_stage_window_timetable(
         w_deadline = _parse_time_str(b.get("window_deadline", "21:00"))
         duration = int(b.get("duration_minutes", 120))
 
-        if w_deadline <= w_start:
-            raise ValueError(f"Day {day_num}: window_deadline ({w_deadline}) must be strictly after window_start ({w_start})")
         if duration <= 0:
             raise ValueError(f"Day {day_num}: duration_minutes must be > 0")
 

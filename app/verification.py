@@ -28,7 +28,7 @@ except ImportError:
     _client = None
     logger.warning("google-genai not installed – AI verification will use heuristic fallback.")
 
-_MODEL = "gemini-2.5-flash"
+_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.8-flash")
 
 # ---------------------------------------------------------------------------
 # Prompts

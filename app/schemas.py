@@ -517,8 +517,23 @@ class TimetableBlockBase(BaseModel):
     def validate_window(self):
         if self.duration_minutes <= 0:
             raise ValueError("duration_minutes must be > 0")
-        if self.window_deadline <= self.window_start:
-            raise ValueError("window_deadline must be strictly after window_start")
+        if self.window_start == self.window_deadline:
+            raise ValueError("window_deadline cannot be identical to window_start")
+
+        start_mins = self.window_start.hour * 60 + self.window_start.minute
+        deadline_mins = self.window_deadline.hour * 60 + self.window_deadline.minute
+
+        if deadline_mins > start_mins:
+            span_minutes = deadline_mins - start_mins
+        else:
+            # Cross-midnight window extending into next morning (e.g. 22:30 -> 00:30)
+            span_minutes = (24 * 60 - start_mins) + deadline_mins
+
+        if span_minutes > 12 * 60:
+            raise ValueError(f"Window span ({span_minutes}m) exceeds 12-hour limit; window_deadline may be inverted")
+        if span_minutes < self.duration_minutes:
+            raise ValueError(f"Window span ({span_minutes}m) must be at least duration_minutes ({self.duration_minutes}m)")
+
         return self
 
 
