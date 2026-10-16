@@ -3,16 +3,20 @@ app/routers/timetables.py
 Router Implementation: Moderate Window-Anchored Study Timetable & Scheduling subsystem.
 Handles authorization, window checks, state transitions, and session startup.
 """
+import logging
 from datetime import datetime, timezone
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
+from app import crud
 from app.database import get_db
 from app.models import StudyTimetable, TimetableBlock
 from app.routers.auth import get_current_user
 from app.schemas import StudyTimetableCreate, StudyTimetableResponse, TimetableBlockResponse
+
+logger = logging.getLogger("focus_engine.timetables")
 
 router = APIRouter()
 
@@ -96,7 +100,42 @@ def start_block_session(
 
     if not block:
         raise HTTPException(status_code=404, detail="Block not found")
-    if block.status != "PENDING":
+
+    if block.status == "COMPLETED":
+        raise HTTPException(
+            status_code=400,
+            detail="Cannot start block: block is already COMPLETED",
+        )
+
+    # Check for existing running session for this user
+    active_session = crud.get_active_session(db, user_id=user_id)
+
+    if block.status == "IN_PROGRESS":
+        if active_session:
+            logger.info(
+                "Timetable block %d is already IN_PROGRESS with active FocusSession %s. Reconnecting user %s.",
+                block.id,
+                active_session.id,
+                user_id,
+            )
+            return {
+                "status": "started",
+                "block_id": block.id,
+                "day_number": block.day_number,
+                "duration_minutes": block.duration_minutes,
+                "early_start": False,
+                "late_start": False,
+                "actual_started_at": block.actual_started_at or active_session.started_at,
+                "session_id": active_session.id,
+                "reconnected": True,
+            }
+        else:
+            logger.info(
+                "Timetable block %d was marked IN_PROGRESS but no active FocusSession exists. Allowing restart/recovery for user %s.",
+                block.id,
+                user_id,
+            )
+    elif block.status != "PENDING":
         raise HTTPException(
             status_code=400,
             detail=f"Cannot start block in '{block.status}' status",

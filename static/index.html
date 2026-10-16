@@ -2318,6 +2318,22 @@
         const deadlineStr = b.window_deadline ? (b.window_deadline.slice ? b.window_deadline.slice(0, 5) : b.window_deadline) : '21:00';
         const targetDate = b.target_date || '';
 
+        const hasActiveSession = Boolean(activeSessionId || (typeof localStorage !== 'undefined' && localStorage.getItem('active_session_id')));
+        let buttonHtml = '';
+        if (b.status === 'IN_PROGRESS' && hasActiveSession) {
+          buttonHtml = `
+            <button id="btn-timetable-start-${b.id}" onclick="mobileNavTo('hud')" class="mt-2 px-4 py-2 bg-amber-600 hover:bg-amber-500 text-white text-xs font-bold rounded shadow transition active:scale-95 cursor-pointer">
+              Session In Progress
+            </button>
+          `;
+        } else {
+          buttonHtml = `
+            <button id="btn-timetable-start-${b.id}" onclick="startTimetableBlock(${b.id})" class="mt-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold rounded shadow transition active:scale-95 cursor-pointer">
+              Start Block Session
+            </button>
+          `;
+        }
+
         widget.innerHTML = `
           <div class="p-4 rounded-xl bg-zinc-900/90 border border-emerald-500/40 shadow-lg font-mono text-xs space-y-2.5">
             <div class="flex items-center justify-between gap-2">
@@ -2336,7 +2352,7 @@
             </div>
             ${b.deliverable_spec ? `<div class="text-[11px] text-zinc-400 font-sans italic leading-relaxed">Deliverable: ${escapeHtml(b.deliverable_spec)}</div>` : ''}
             <div>
-              <button onclick="startTimetableBlock(${b.id})" class="mt-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold rounded shadow transition active:scale-95 cursor-pointer">Start Block Session</button>
+              ${buttonHtml}
             </div>
           </div>
         `;
@@ -2354,9 +2370,23 @@
     };
 
     async function startTimetableBlock(blockId) {
+      const btn = document.getElementById(`btn-timetable-start-${blockId}`) || document.querySelector(`button[onclick*="startTimetableBlock(${blockId})"]`);
+      const originalText = btn ? btn.textContent : 'Start Block Session';
+      if (btn) {
+        btn.disabled = true;
+        btn.classList.add('pointer-events-none', 'opacity-50');
+        btn.textContent = 'Starting...';
+      }
+
       try {
         const res = await api('POST', `/api/timetables/blocks/${blockId}/start`);
         toast(`Day ${res.day_number || ''} timetable block session started.`, 'success');
+
+        // If backend returned active session info on reconnection
+        if (res.session_id && !activeSessionId) {
+          activeSessionId = res.session_id;
+          try { localStorage.setItem('active_session_id', res.session_id); } catch (_) {}
+        }
 
         const activeBlock = window.activeTimetableBlock;
         const topic = (activeBlock && activeBlock.topic) || `Timetable Day ${res.day_number || blockId}`;
@@ -2386,13 +2416,21 @@
 
         if (matchingTask) {
           selectTask(matchingTask.id);
-          await startSession();
+          if (!activeSessionId) {
+            await startSession();
+          }
         }
 
         await loadActiveTimetableHUD();
         mobileNavTo('hud');
       } catch (err) {
         toast('Failed to start timetable block: ' + err.message, 'error');
+      } finally {
+        if (btn) {
+          btn.disabled = false;
+          btn.classList.remove('pointer-events-none', 'opacity-50');
+          btn.textContent = originalText;
+        }
       }
     }
     window.startTimetableBlock = startTimetableBlock;

@@ -165,3 +165,157 @@ def test_semantic_proposal_dynamic_duration():
     assert prop_5 is not None
     assert prop_5["total_days"] == 5
     assert len(prop_5["blocks"]) == 5
+
+
+def test_start_block_in_progress_with_active_session_idempotent(db_session):
+    """Verify starting an IN_PROGRESS block reconnects to existing active session idempotently."""
+    from datetime import date, datetime, time, timezone
+    from fastapi.testclient import TestClient
+    from app.main import app
+    from app.auth import get_current_user
+    from app.models import Task, FocusSession
+
+    app.dependency_overrides[get_current_user] = lambda: MockUser.id
+    client = TestClient(app)
+
+    try:
+        tt = StudyTimetable(
+            user_id=MockUser.id,
+            title="Idempotent Test",
+            track_id="coding",
+            total_days=1,
+            status="ACTIVE",
+        )
+        db_session.add(tt)
+        db_session.flush()
+
+        block = TimetableBlock(
+            timetable_id=tt.id,
+            day_number=1,
+            target_date=date.today(),
+            window_start=time(0, 0),
+            window_deadline=time(23, 59),
+            duration_minutes=60,
+            topic="Idempotency Topic",
+            deliverable_spec="Spec",
+            verification_rules="Rules",
+            status="IN_PROGRESS",
+        )
+        db_session.add(block)
+
+        task = Task(
+            user_id=MockUser.id,
+            title="Idempotency Task",
+            category="coding",
+        )
+        db_session.add(task)
+        db_session.flush()
+
+        session = FocusSession(
+            user_id=MockUser.id,
+            task_id=task.id,
+            started_at=datetime.now(timezone.utc),
+            ended_at=None,
+        )
+        db_session.add(session)
+        db_session.commit()
+
+        res = client.post(f"/api/timetables/blocks/{block.id}/start")
+        assert res.status_code == 200
+        data = res.json()
+        assert data["status"] == "started"
+        assert data.get("session_id") == session.id
+        assert data.get("reconnected") is True
+
+    finally:
+        app.dependency_overrides.pop(get_current_user, None)
+
+
+def test_start_block_in_progress_without_active_session_recovers(db_session):
+    """Verify starting an IN_PROGRESS block without active session allows restart recovery."""
+    from datetime import date, time
+    from fastapi.testclient import TestClient
+    from app.main import app
+    from app.auth import get_current_user
+
+    app.dependency_overrides[get_current_user] = lambda: MockUser.id
+    client = TestClient(app)
+
+    try:
+        tt = StudyTimetable(
+            user_id=MockUser.id,
+            title="Recovery Test",
+            track_id="coding",
+            total_days=1,
+            status="ACTIVE",
+        )
+        db_session.add(tt)
+        db_session.flush()
+
+        block = TimetableBlock(
+            timetable_id=tt.id,
+            day_number=1,
+            target_date=date.today(),
+            window_start=time(0, 0),
+            window_deadline=time(23, 59),
+            duration_minutes=60,
+            topic="Recovery Topic",
+            deliverable_spec="Spec",
+            verification_rules="Rules",
+            status="IN_PROGRESS",
+        )
+        db_session.add(block)
+        db_session.commit()
+
+        res = client.post(f"/api/timetables/blocks/{block.id}/start")
+        assert res.status_code == 200
+        data = res.json()
+        assert data["status"] == "started"
+        assert data["block_id"] == block.id
+
+    finally:
+        app.dependency_overrides.pop(get_current_user, None)
+
+
+def test_start_block_completed_fails_400(db_session):
+    """Verify starting a COMPLETED block is rejected with 400."""
+    from datetime import date, time
+    from fastapi.testclient import TestClient
+    from app.main import app
+    from app.auth import get_current_user
+
+    app.dependency_overrides[get_current_user] = lambda: MockUser.id
+    client = TestClient(app)
+
+    try:
+        tt = StudyTimetable(
+            user_id=MockUser.id,
+            title="Completed Test",
+            track_id="coding",
+            total_days=1,
+            status="ACTIVE",
+        )
+        db_session.add(tt)
+        db_session.flush()
+
+        block = TimetableBlock(
+            timetable_id=tt.id,
+            day_number=1,
+            target_date=date.today(),
+            window_start=time(0, 0),
+            window_deadline=time(23, 59),
+            duration_minutes=60,
+            topic="Completed Topic",
+            deliverable_spec="Spec",
+            verification_rules="Rules",
+            status="COMPLETED",
+        )
+        db_session.add(block)
+        db_session.commit()
+
+        res = client.post(f"/api/timetables/blocks/{block.id}/start")
+        assert res.status_code == 400
+        assert "COMPLETED" in res.text
+
+    finally:
+        app.dependency_overrides.pop(get_current_user, None)
