@@ -24,6 +24,7 @@ from app.auth import (
     SUPABASE_JWT_SECRET,
     bearer_scheme,
     decode_token,
+    get_current_user,
     jwt,
 )
 from app.database import get_db

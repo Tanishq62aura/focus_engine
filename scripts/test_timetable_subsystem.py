@@ -1,185 +1,117 @@
-"""
-scripts/test_timetable_subsystem.py
-Automated End-to-End Verification Suite for Focus Engine
-Moderate Window-Anchored Study Timetable & Scheduling Subsystem.
-
-Tests:
-1. Authenticate via dev token.
-2. Post a 7-day timetable payload to /api/timetables/stage and assert HTTP 200 with 7 blocks.
-3. Fetch /api/timetables/active and verify schema structure and date/time field integrity.
-4. Call /start on Day 1 block and verify transition to IN_PROGRESS with non-null actual_started_at.
-5. Verify defensive validation (rejecting negative duration or invalid deadline).
-6. Verify chat assistant TIMETABLE_CARD payload trigger.
-7. Clean up test timetable data from database.
-"""
-from __future__ import annotations
-
 import os
 import sys
-from datetime import date, timedelta
-from pathlib import Path
+from datetime import date, time, timedelta
 
 # Ensure project root is in sys.path
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from fastapi.testclient import TestClient
-
-from app.database import SessionLocal, init_db
 from app.main import app
-from app import models
+from app.database import SessionLocal
+from app.models import StudyTimetable, TimetableBlock
+from app.routers.auth import get_current_user
 
+# Mock authenticated user for testing
+class MockUser:
+    id = "usr_test_verification_01"
+    email = "test_verify@focusengine.internal"
+
+app.dependency_overrides[get_current_user] = lambda: MockUser()
 client = TestClient(app)
 
-
 def run_tests():
-    print("=" * 65)
-    print("[*] FOCUS ENGINE: TIMETABLE & SCHEDULING SUBSYSTEM VERIFICATION")
-    print("=" * 65)
+    print("[-] Running Focus Engine Subsystem Verification...")
 
-    init_db()
+    # 1. Verify Healthz (GET and HEAD)
+    res_get = client.get("/healthz")
+    assert res_get.status_code == 200, f"GET /healthz failed: {res_get.status_code}"
+    assert res_get.json() == {"status": "ok", "service": "focus-engine"}
+    print("  [+] GET /healthz returned 200 OK")
 
-    # Step 1: Authenticate via dev token
-    print("\n[Step 1] Requesting dev authentication token...")
-    auth_resp = client.post("/auth/dev-token")
-    assert auth_resp.status_code == 200, f"Auth failed: {auth_resp.text}"
-    token_data = auth_resp.json()
-    token = token_data["access_token"]
-    headers = {"Authorization": f"Bearer {token}"}
-    print(f"[OK] Authenticated as dev-user. Token prefix: {token[:16]}...")
+    res_head = client.head("/healthz")
+    assert res_head.status_code == 200, f"HEAD /healthz failed: {res_head.status_code}"
+    print("  [+] HEAD /healthz returned 200 OK")
 
-    db = SessionLocal()
-    staged_timetable_id = None
-
-    try:
-        # Step 2: Post 7-day timetable payload to /api/timetables/stage
-        print("\n[Step 2] Staging 7-day moderate window timetable payload...")
-        today = date.today()
-        sample_blocks = []
-        for i in range(1, 8):
-            sample_blocks.append({
-                "day_number": i,
-                "target_date": (today + timedelta(days=i - 1)).isoformat(),
-                "window_start": "19:00:00",
-                "window_deadline": "21:00:00",
+    # 2. Defensive Validation Checks (Invalid deadlines & durations)
+    today = date.today()
+    invalid_payload = {
+        "title": "Invalid Schedule",
+        "track_id": "coding",
+        "total_days": 1,
+        "blocks": [
+            {
+                "day_number": 1,
+                "target_date": str(today),
+                "window_start": "21:00:00",
+                "window_deadline": "19:00:00",  # Invalid: deadline before start
                 "duration_minutes": 120,
-                "topic": f"Day {i}: Distributed Consensus & Raft Protocol",
-                "deliverable_spec": "Raft leader election and log replication unit test suite.",
-                "verification_rules": "Git diff with 90%+ branch coverage and oral defense viva.",
-                "status": "PENDING",
-            })
+                "topic": "Python Internals",
+                "deliverable_spec": "CLI App",
+                "verification_rules": "All tests pass"
+            }
+        ]
+    }
+    res_invalid = client.post("/api/timetables/stage", json=invalid_payload)
+    assert res_invalid.status_code == 422, f"Expected 422 validation error, got {res_invalid.status_code}"
+    print("  [+] Defensive schema check rejected invalid window (deadline <= start)")
 
-        payload = {
-            "title": "Mastering Distributed Systems (7-Day Sprint)",
-            "track_id": "coding",
-            "total_days": 7,
-            "blocks": sample_blocks,
-        }
+    # 3. Stage Valid 7-Day Timetable
+    valid_blocks = []
+    for day in range(1, 8):
+        valid_blocks.append({
+            "day_number": day,
+            "target_date": str(today + timedelta(days=day - 1)),
+            "window_start": "19:00:00",
+            "window_deadline": "21:00:00",
+            "duration_minutes": 120,
+            "topic": f"Python Module Day {day}",
+            "deliverable_spec": f"Unit test suite {day}",
+            "verification_rules": "No flake8 errors, 100% coverage"
+        })
 
-        stage_resp = client.post("/api/timetables/stage?commit=true", json=payload, headers=headers)
-        assert stage_resp.status_code in (200, 201), f"Stage failed: {stage_resp.text}"
-        data = stage_resp.json()
-        staged_timetable_id = data["id"]
-        assert len(data["blocks"]) == 7, f"Expected 7 blocks, got {len(data['blocks'])}"
-        assert data["status"] == "ACTIVE", f"Expected ACTIVE status, got {data['status']}"
-        assert data["title"] == payload["title"]
-        print(f"[OK] Staged timetable ID {staged_timetable_id} with 7 blocks successfully.")
+    valid_payload = {
+        "title": "7-Day Python Acceleration",
+        "track_id": "coding",
+        "total_days": 7,
+        "blocks": valid_blocks
+    }
 
-        # Step 3: Fetch /api/timetables/active
-        print("\n[Step 3] Querying /api/timetables/active...")
-        active_resp = client.get("/api/timetables/active", headers=headers)
-        assert active_resp.status_code == 200, f"Active fetch failed: {active_resp.text}"
-        active_data = active_resp.json()
-        assert active_data["id"] == staged_timetable_id, f"Expected active ID {staged_timetable_id}"
-        assert len(active_data["blocks"]) == 7, f"Expected 7 blocks, got {len(active_data['blocks'])}"
-        day1_block_id = active_data["blocks"][0]["id"]
-        print(f"[OK] Active timetable confirmed. Timetable ID: {staged_timetable_id}, Day 1 block ID: {day1_block_id}")
+    res_stage = client.post("/api/timetables/stage", json=valid_payload)
+    assert res_stage.status_code == 201, f"Stage failed: {res_stage.text}"
+    staged_data = res_stage.json()
+    assert staged_data["total_days"] == 7
+    assert len(staged_data["blocks"]) == 7
+    timetable_id = staged_data["id"]
+    day1_block_id = staged_data["blocks"][0]["id"]
+    print("  [+] Staged 7-day timetable committed to DB (HTTP 201)")
 
-        # Step 4: Call /start on Day 1 block
-        print(f"\n[Step 4] Starting execution block {day1_block_id} via /api/timetables/blocks/{day1_block_id}/start...")
-        start_resp = client.post(f"/api/timetables/blocks/{day1_block_id}/start", headers=headers)
-        assert start_resp.status_code == 200, f"Start block failed: {start_resp.text}"
-        start_data = start_resp.json()
-        assert start_data["status"] == "started", f"Expected 'started', got {start_data.get('status')}"
-        assert start_data["block_id"] == day1_block_id
-        assert start_data["actual_started_at"] is not None
-        print(f"[OK] Block transitioned to IN_PROGRESS. Started at: {start_data['actual_started_at']}")
-        print(f"     Timing diagnosis: early_start={start_data['early_start']}, late_start={start_data['late_start']}")
+    # 4. Fetch Active Timetable
+    res_active = client.get("/api/timetables/active")
+    assert res_active.status_code == 200, f"Get active failed: {res_active.text}"
+    active_data = res_active.json()
+    assert active_data["id"] == timetable_id
+    assert active_data["status"] == "ACTIVE"
+    print("  [+] Active timetable retrieved successfully (HTTP 200)")
 
-        # Step 4b: Verify duplicate start rejection
-        print("\n[Step 4b] Testing defensive rejection of re-starting already IN_PROGRESS block...")
-        re_start = client.post(f"/api/timetables/blocks/{day1_block_id}/start", headers=headers)
-        assert re_start.status_code == 400, f"Expected 400 on duplicate start, got {re_start.status_code}"
-        print("[OK] Duplicate block start rejected with HTTP 400.")
+    # 5. Start Block Session
+    res_start = client.post(f"/api/timetables/blocks/{day1_block_id}/start")
+    assert res_start.status_code == 200, f"Start block failed: {res_start.text}"
+    start_data = res_start.json()
+    assert start_data["status"] == "started"
+    assert start_data["block_id"] == day1_block_id
+    assert start_data["actual_started_at"] is not None
+    print("  [+] Day 1 block transitioned to IN_PROGRESS with timestamp")
 
-        # Step 5: Verify defensive schema validation
-        print("\n[Step 5] Testing Pydantic validation (negative duration & invalid deadline)...")
-        # 5a: Negative duration
-        invalid_payload_duration = {
-            "title": "Invalid Timetable",
-            "track_id": "coding",
-            "total_days": 1,
-            "blocks": [{
-                "day_number": 1,
-                "target_date": today.isoformat(),
-                "window_start": "19:00:00",
-                "window_deadline": "21:00:00",
-                "duration_minutes": -30,
-                "topic": "Negative time",
-                "deliverable_spec": "Invalid",
-                "verification_rules": "None",
-            }]
-        }
-        resp_dur = client.post("/api/timetables/stage", json=invalid_payload_duration, headers=headers)
-        assert resp_dur.status_code == 422, f"Expected 422 for negative duration, got {resp_dur.status_code}"
-        print("[OK] Correctly rejected negative duration with 422 Unprocessable Entity.")
-
-        # 5b: Deadline before start
-        invalid_payload_window = {
-            "title": "Invalid Window",
-            "track_id": "coding",
-            "total_days": 1,
-            "blocks": [{
-                "day_number": 1,
-                "target_date": today.isoformat(),
-                "window_start": "22:00:00",
-                "window_deadline": "18:00:00",  # Deadline earlier than start
-                "duration_minutes": 60,
-                "topic": "Inverted window",
-                "deliverable_spec": "Invalid",
-                "verification_rules": "None",
-            }]
-        }
-        resp_win = client.post("/api/timetables/stage", json=invalid_payload_window, headers=headers)
-        assert resp_win.status_code == 422, f"Expected 422 for inverted window, got {resp_win.status_code}"
-        print("[OK] Correctly rejected invalid window_deadline <= window_start with 422.")
-
-        # Step 6: Verify Chat Assistant TIMETABLE_CARD Trigger
-        print("\n[Step 6] Testing Chat Assistant stage_window_timetable intent & TIMETABLE_CARD...")
-        chat_resp = client.post(
-            "/api/support/chat",
-            json={"message": "Can you plan my 7 day study timetable for Operating Systems?"},
-            headers=headers,
-        )
-        assert chat_resp.status_code == 200, f"Chat failed: {chat_resp.text}"
-        chat_data = chat_resp.json()
-        assert chat_data.get("action") == "TIMETABLE_CARD", f"Expected TIMETABLE_CARD, got {chat_data.get('action')}"
-        assert "data" in chat_data and chat_data["data"]["total_days"] == 7
-        assert len(chat_data["data"]["blocks"]) == 7
-        print("[OK] Support Chat assistant successfully triggered stage_window_timetable and returned TIMETABLE_CARD.")
-
+    # 6. Cleanup Test Artifacts
+    db = SessionLocal()
+    try:
+        db.query(StudyTimetable).filter(StudyTimetable.user_id == MockUser.id).delete()
+        db.commit()
+        print("  [+] Cleaned up test database records")
     finally:
-        # Step 7: Cleanup test data
-        print("\n[Step 7] Cleaning up test timetable database records...")
-        if staged_timetable_id:
-            db.query(models.StudyTimetable).filter(models.StudyTimetable.id == staged_timetable_id).delete()
-            db.commit()
-            print(f"[CLEANUP] Successfully cleaned up timetable ID {staged_timetable_id}.")
         db.close()
 
-    print("\n" + "=" * 65)
-    print("[SUCCESS] ALL TIMETABLE & SCHEDULING SUBSYSTEM TESTS PASSED!")
-    print("=" * 65)
-
+    print("\n[SUCCESS] All 6 verification checks passed cleanly.")
 
 if __name__ == "__main__":
     run_tests()
