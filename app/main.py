@@ -12,7 +12,7 @@ import socket
 from pathlib import Path
 from typing import Optional
 
-from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException, status
+from fastapi import APIRouter, BackgroundTasks, Depends, FastAPI, HTTPException, status
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
@@ -255,9 +255,13 @@ def issue_dev_token():
 
 
 # ---------------------------------------------------------------------------
-# Tasks
+# Tasks Router (dual-mounted on /api/tasks and /tasks)
 # ---------------------------------------------------------------------------
-@app.post("/tasks", response_model=schemas.TaskRead, status_code=status.HTTP_201_CREATED)
+tasks_router = APIRouter()
+
+
+@tasks_router.post("", response_model=schemas.TaskRead, status_code=status.HTTP_201_CREATED)
+@tasks_router.post("/", response_model=schemas.TaskRead, status_code=status.HTTP_201_CREATED, include_in_schema=False)
 def create_task(
     data: schemas.TaskCreate,
     db: Session = Depends(get_db),
@@ -266,12 +270,17 @@ def create_task(
     return crud.create_task(db, data, user_id=current_user)
 
 
-@app.get("/tasks", response_model=list[schemas.TaskRead])
+@tasks_router.get("", response_model=list[schemas.TaskRead])
+@tasks_router.get("/", response_model=list[schemas.TaskRead], include_in_schema=False)
 def list_tasks(
     db: Session = Depends(get_db),
     current_user: str = Depends(get_current_user),
 ):
     return crud.get_tasks(db, user_id=current_user)
+
+
+app.include_router(tasks_router, prefix="/api/tasks", tags=["Tasks"])
+app.include_router(tasks_router, prefix="/tasks", tags=["Tasks"])
 
 
 # ---------------------------------------------------------------------------
