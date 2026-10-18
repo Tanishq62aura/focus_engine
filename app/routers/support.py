@@ -1475,6 +1475,7 @@ class VivaVerifyPayload(BaseModel):
     session_id: Optional[str] = None
     answer: Optional[str] = None
     user_answer: Optional[str] = None
+    transcript: Optional[str] = None
     proof_text: Optional[str] = None
     timetable_block_id: Optional[int] = None
     passed: Optional[bool] = None
@@ -1489,6 +1490,7 @@ def verify_viva_defense(
     """
     Submits and resolves oral viva defense verification.
     Binds defense completion to timetable block lifecycle completion atomically.
+    Hardened with replay idempotency guards, pre-flight screening, and rubric evaluation.
     """
     user_id = str(getattr(current_user, "id", current_user))
 
@@ -1528,7 +1530,7 @@ def verify_viva_defense(
             .filter(
                 FocusSession.user_id == user_id,
                 FocusSession.timetable_block_id == block.id,
-                FocusSession.status == "IN_PROGRESS",
+                FocusSession.status.in_(["IN_PROGRESS", "ACTIVE"]),
             )
             .first()
         )
@@ -1538,7 +1540,7 @@ def verify_viva_defense(
                 .filter(
                     FocusSession.user_id == user_id,
                     FocusSession.task_id == block.task_id,
-                    FocusSession.status == "IN_PROGRESS",
+                    FocusSession.status.in_(["IN_PROGRESS", "ACTIVE"]),
                 )
                 .first()
             )
@@ -1588,25 +1590,66 @@ def verify_viva_defense(
             .first()
         )
 
-    # Determine pass/fail
-    passed = payload.passed
-    if passed is None:
-        ans = payload.answer or payload.user_answer or (session.viva_answer if session else None) or "verified via defense"
-        if session and session.viva_question:
-            from app.verification import evaluate_viva_answer
-            task = crud.get_task(db, session.task_id, user_id=user_id) if session else None
-            cat = task.category if task else "coding"
-            passed, _ = evaluate_viva_answer(
-                question=session.viva_question,
-                answer=ans,
-                proof_text=session.proof_text or payload.proof_text or "",
-                category=cat,
-            )
+    # Idempotency guard: If the block is already COMPLETED or session is already verified, return HTTP 409 Conflict
+    if block and block.status == "COMPLETED":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Replay attack rejected: Timetable block is already COMPLETED.",
+        )
+    if session and (getattr(session, "is_verified", False) or getattr(session, "verification_status", "") == "verified"):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Replay attack rejected: Session is already verified.",
+        )
+
+    # Structured Viva Defense Evaluation
+    from app.services.viva_evaluator import evaluate_viva_defense
+
+    transcript = (
+        payload.transcript
+        or payload.answer
+        or payload.user_answer
+        or (session.viva_answer if session else None)
+        or ""
+    )
+    block_topic = block.topic if block else ""
+    block_deliverable = (block.deliverable_spec if block else "") or ""
+
+    if transcript:
+        eval_result = evaluate_viva_defense(
+            transcript=transcript,
+            block_topic=block_topic,
+            block_deliverable=block_deliverable,
+        )
+        if eval_result.get("security_flag") or eval_result.get("rejection_reason") == "TRANSCRIPT_TOO_SHORT":
+            passed = False
+        elif payload.passed is not None:
+            passed = payload.passed
         else:
-            passed = bool(ans and len(ans.strip()) >= 3)
+            passed = eval_result["passed"]
+    elif payload.passed is not None:
+        passed = payload.passed
+        eval_result = {
+            "passed": passed,
+            "security_flag": False,
+            "rejection_reason": None if passed else "MANUAL_REJECTION",
+            "critique": "Manually verified" if passed else "Manual rejection",
+            "depth": 80.0 if passed else 0.0,
+            "artifacts": 80.0 if passed else 0.0,
+            "alignment": 80.0 if passed else 0.0,
+            "composite": 80.0 if passed else 0.0,
+        }
+    else:
+        eval_result = evaluate_viva_defense(
+            transcript="",
+            block_topic=block_topic,
+            block_deliverable=block_deliverable,
+        )
+        passed = eval_result["passed"]
 
     now_utc = datetime.utcnow()
     parent_timetable = None
+
     if passed:
         if block:
             block.status = "COMPLETED"
@@ -1673,7 +1716,9 @@ def verify_viva_defense(
 
         if session:
             session.is_verified = True
+            session.verification_status = "verified"
             session.status = "COMPLETED"
+            session.ended_at = session.ended_at or now_utc
             session.end_time = now_utc
             if not session.start_time:
                 session.start_time = now_utc - timedelta(minutes=1)
@@ -1687,9 +1732,18 @@ def verify_viva_defense(
             session.verified_minutes = session.duration_minutes
             if block:
                 session.timetable_block_id = block.id
+            if eval_result.get("critique"):
+                session.viva_feedback = eval_result.get("critique")
+            if transcript:
+                session.viva_answer = transcript
     else:
+        # If passed=False, record the critique/reason without completing the block
+        critique = eval_result.get("critique") or eval_result.get("rejection_reason") or "Oral viva defense failed."
         if session:
             session.verification_status = "rejected"
+            session.viva_feedback = critique
+            if transcript:
+                session.viva_answer = transcript
             session.ended_at = session.ended_at or now_utc
         if block:
             block.status = "MISSED"
@@ -1712,10 +1766,15 @@ def verify_viva_defense(
         "timetable_block_id": block.id if block else payload.timetable_block_id,
         "block_status": block.status if block else None,
         "timetable_status": parent_tt.status if parent_tt else None,
+        "evaluation": eval_result,
+        "critique": eval_result.get("critique"),
+        "rejection_reason": eval_result.get("rejection_reason"),
+        "security_flag": eval_result.get("security_flag", False),
         "message": (
             "Oral viva defense verified successfully. Timetable block completed."
             if passed
-            else "Oral viva defense failed or rejected."
+            else f"Oral viva defense failed or rejected: {eval_result.get('rejection_reason') or eval_result.get('critique')}"
         ),
     }
+
 
