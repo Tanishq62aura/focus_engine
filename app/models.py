@@ -20,8 +20,10 @@ from sqlalchemy import (
     String,
     Text,
     Time,
+    case,
     func,
 )
+from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.orm import relationship
 
 from app.database import Base
@@ -131,6 +133,83 @@ class FocusSession(Base):
     parked_thoughts = relationship(
         "ParkedThought", back_populates="session", cascade="all, delete"
     )
+
+    @hybrid_property
+    def is_verified(self):
+        return self.verification_status == "verified"
+
+    @is_verified.setter
+    def is_verified(self, val: bool):
+        self.verification_status = "verified" if val else "unverified"
+
+    @is_verified.expression
+    def is_verified(cls):
+        return cls.verification_status == "verified"
+
+    @hybrid_property
+    def start_time(self):
+        return self.started_at
+
+    @start_time.setter
+    def start_time(self, val):
+        self.started_at = val
+
+    @start_time.expression
+    def start_time(cls):
+        return cls.started_at
+
+    @hybrid_property
+    def end_time(self):
+        return self.ended_at
+
+    @end_time.setter
+    def end_time(self, val):
+        self.ended_at = val
+
+    @end_time.expression
+    def end_time(cls):
+        return cls.ended_at
+
+    @hybrid_property
+    def status(self):
+        if self.ended_at is not None:
+            return "COMPLETED"
+        if self.started_at is not None:
+            return "IN_PROGRESS"
+        return "PENDING"
+
+    @status.setter
+    def status(self, val: str):
+        if val == "COMPLETED" and not self.ended_at:
+            self.ended_at = _utcnow()
+        elif val == "IN_PROGRESS" and not self.started_at:
+            self.started_at = _utcnow()
+
+    @status.expression
+    def status(cls):
+        return case(
+            (cls.ended_at.isnot(None), "COMPLETED"),
+            (cls.started_at.isnot(None), "IN_PROGRESS"),
+            else_="PENDING",
+        )
+
+    @hybrid_property
+    def duration_minutes(self):
+        if self.actual_focused_seconds:
+            return max(1, int(self.actual_focused_seconds / 60))
+        if self.started_at and self.ended_at:
+            st = self.started_at
+            et = self.ended_at
+            if st.tzinfo is None and et.tzinfo is not None:
+                st = st.replace(tzinfo=timezone.utc)
+            elif st.tzinfo is not None and et.tzinfo is None:
+                et = et.replace(tzinfo=timezone.utc)
+            return max(1, int((et - st).total_seconds() / 60))
+        return 0
+
+    @duration_minutes.setter
+    def duration_minutes(self, val: int):
+        self.actual_focused_seconds = max(0, int(val * 60))
 
 
 # ---------------------------------------------------------------------------
@@ -303,6 +382,7 @@ class TimetableBlock(Base):
 # Model Aliases for backward compatibility
 StudyTimetableBlock = TimetableBlock
 StudyTimetableModel = StudyTimetable
+StudySession = FocusSession
 
 
 

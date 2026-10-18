@@ -626,6 +626,19 @@ def finalize_timetable_block_lifecycle(
 
     now = datetime.now(timezone.utc)
     if success:
+        if session:
+            session.is_verified = True
+            session.status = "COMPLETED"
+            session.end_time = session.end_time or now
+            if not session.start_time:
+                session.start_time = now - timedelta(minutes=1)
+            st = session.start_time
+            if st.tzinfo is None:
+                st = st.replace(tzinfo=timezone.utc)
+            session.duration_minutes = max(1, int((now - st).total_seconds() / 60))
+            if block:
+                session.timetable_block_id = block.id
+
         block.status = "COMPLETED"
         block.actual_completed_at = now
         timetable = (
@@ -646,9 +659,14 @@ def finalize_timetable_block_lifecycle(
             if remaining == 0:
                 timetable.status = "COMPLETED"
     else:
+        if session:
+            session.verification_status = "rejected"
+            session.ended_at = session.ended_at or now
         block.status = "MISSED"
 
     db.commit()
+    if session:
+        db.refresh(session)
     db.refresh(block)
     return block
 

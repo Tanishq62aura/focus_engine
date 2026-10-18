@@ -11,6 +11,7 @@ from datetime import date, datetime, timedelta, timezone
 from typing import Any, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app import crud, models, schemas
@@ -169,18 +170,43 @@ def get_streak_report(
             models.FocusSession.user_id == current_user,
             models.FocusSession.verification_status == "verified",
         )
-        .order_by(models.FocusSession.started_at.desc())
+        .all()
+    )
+
+    # Query completed timetable blocks for user where actual_completed_at is set
+    # Execution truth takes precedence: filter/group by func.date(StudyTimetableBlock.actual_completed_at)
+    completed_blocks = (
+        db.query(models.StudyTimetableBlock)
+        .join(models.StudyTimetable, models.StudyTimetableBlock.timetable_id == models.StudyTimetable.id)
+        .filter(
+            models.StudyTimetable.user_id == current_user,
+            models.StudyTimetableBlock.status == "COMPLETED",
+            models.StudyTimetableBlock.actual_completed_at.isnot(None),
+        )
         .all()
     )
 
     now = datetime.now(timezone.utc)
     today_str = now.strftime("%Y-%m-%d")
 
-    # Group passed sessions by UTC date
+    # Group completed blocks by date string
+    blocks_by_date: dict[str, set[int]] = {}
+    for b in completed_blocks:
+        if b.actual_completed_at:
+            ds = b.actual_completed_at.strftime("%Y-%m-%d")
+            blocks_by_date.setdefault(ds, set()).add(b.id)
+
+    # Group verified units by UTC date, avoiding double counting if session is linked to a block
     counts_by_date: dict[str, int] = {}
+    for ds, b_set in blocks_by_date.items():
+        counts_by_date[ds] = len(b_set)
+
     for s in passed_sessions:
-        if s.started_at:
-            ds = s.started_at.strftime("%Y-%m-%d")
+        dt = s.end_time or s.started_at
+        if dt:
+            ds = dt.strftime("%Y-%m-%d")
+            if s.timetable_block_id and s.timetable_block_id in blocks_by_date.get(ds, set()):
+                continue
             counts_by_date[ds] = counts_by_date.get(ds, 0) + 1
 
     today_count = counts_by_date.get(today_str, 0)
@@ -223,7 +249,8 @@ def get_streak_report(
     db.commit()
     db.refresh(setting)
 
-    last_active = passed_sessions[0].started_at.strftime("%Y-%m-%d") if passed_sessions else None
+    active_dates = sorted(counts_by_date.keys(), reverse=True)
+    last_active = active_dates[0] if active_dates else None
 
     status_label = "ACTIVE" if streak > 0 else ("PENDING_TODAY" if today_count > 0 else "AT_RISK")
 
@@ -236,6 +263,9 @@ def get_streak_report(
         last_active_date=last_active,
         status=status_label,
     )
+
+
+get_streak = get_streak_report
 
 
 @router.post("/streak/break")
@@ -264,32 +294,86 @@ def force_break_streak(
 def calculate_daily_scorecard(db: Session, user_id: str, target_date: date) -> dict:
     """
     Computes Daily Execution Index (DEI) for user on target_date:
-    1. Query focus_sessions where user_id == user_id and session start date matches target_date
-    2. Query infractions from distraction_logs and paste bursts
-    3. Query Viva defense outcomes (pass rate)
-    4. Compute DEI [0.0 - 100.0] and assign grade (OPTIMAL, SUBPAR, CRITICAL_DRIFT)
+    1. Filter completed timetable blocks by func.date(StudyTimetableBlock.actual_completed_at) == D
+    2. Sum verified_minutes from verified StudySession (where func.date(end_time) == D) and completed blocks
+    3. Query infractions from distraction_logs and paste bursts
+    4. Query Viva defense outcomes (pass rate)
+    5. Compute DEI [0.0 - 100.0] and assign grade (OPTIMAL, SUBPAR, CRITICAL_DRIFT)
     """
-    all_sessions = (
-        db.query(models.FocusSession)
-        .filter(models.FocusSession.user_id == user_id)
+    D = target_date
+
+    # 1. Completed timetable blocks for target date D:
+    # Filter by func.date(StudyTimetableBlock.actual_completed_at) == D, NOT StudyTimetableBlock.target_date == D.
+    completed_tt_blocks = (
+        db.query(models.StudyTimetableBlock)
+        .join(models.StudyTimetable, models.StudyTimetableBlock.timetable_id == models.StudyTimetable.id)
+        .filter(
+            models.StudyTimetable.user_id == user_id,
+            models.StudyTimetableBlock.status == "COMPLETED",
+            func.date(models.StudyTimetableBlock.actual_completed_at) == D,
+        )
         .all()
     )
 
-    day_sessions = [
-        s for s in all_sessions
-        if s.started_at and s.started_at.date() == target_date
+    # 2. Verified sessions for date D:
+    # StudySession.duration_minutes where is_verified == True and func.date(StudySession.end_time) == D
+    verified_sessions = (
+        db.query(models.FocusSession)
+        .filter(
+            models.FocusSession.user_id == user_id,
+            models.FocusSession.is_verified == True,
+            func.date(models.FocusSession.end_time) == D,
+        )
+        .all()
+    )
+
+    # Calculate verified_minutes by summing both:
+    # a) StudySession.duration_minutes where is_verified == True and func.date(StudySession.end_time) == D.
+    session_minutes = sum(s.duration_minutes for s in verified_sessions)
+
+    # b) Blocks completed on date D where actual duration was logged.
+    session_block_ids = {s.timetable_block_id for s in verified_sessions if s.timetable_block_id}
+    unlinked_block_minutes = 0
+    for b in completed_tt_blocks:
+        if b.id not in session_block_ids:
+            if b.actual_completed_at and b.actual_started_at:
+                st = b.actual_started_at.replace(tzinfo=timezone.utc) if b.actual_started_at.tzinfo is None else b.actual_started_at
+                et = b.actual_completed_at.replace(tzinfo=timezone.utc) if b.actual_completed_at.tzinfo is None else b.actual_completed_at
+                unlinked_block_minutes += max(1, int((et - st).total_seconds() / 60))
+            elif b.duration_minutes:
+                unlinked_block_minutes += b.duration_minutes
+
+    total_verified_minutes = float(round(session_minutes + unlinked_block_minutes, 1))
+
+    # Calculate completed_blocks:
+    # Total completed blocks physically verified on date D (timetable blocks + standalone sessions)
+    all_completed_sessions_today = (
+        db.query(models.FocusSession)
+        .filter(
+            models.FocusSession.user_id == user_id,
+            models.FocusSession.ended_at.isnot(None),
+            func.date(models.FocusSession.end_time) == D,
+        )
+        .all()
+    )
+    tt_block_ids = {b.id for b in completed_tt_blocks}
+    standalone_completed_sessions = [
+        s for s in all_completed_sessions_today
+        if s.timetable_block_id not in tt_block_ids
     ]
-
-    completed_sessions = [s for s in day_sessions if s.ended_at is not None]
-    completed_blocks = len(completed_sessions)
-
-    verified_sessions = [s for s in completed_sessions if s.verification_status == "verified"]
-    total_verified_seconds = sum(s.actual_focused_seconds or 0 for s in verified_sessions)
-    total_verified_minutes = round(total_verified_seconds / 60.0, 1)
+    completed_blocks_count = len(completed_tt_blocks) + len(standalone_completed_sessions)
 
     setting = db.query(models.UserSetting).filter(models.UserSetting.user_id == user_id).first()
     target_floor_minutes = setting.daily_target_minutes if (setting and setting.daily_target_minutes) else 180
 
+    day_sessions = (
+        db.query(models.FocusSession)
+        .filter(
+            models.FocusSession.user_id == user_id,
+            func.date(func.coalesce(models.FocusSession.ended_at, models.FocusSession.started_at)) == D,
+        )
+        .all()
+    )
     session_ids = {s.id for s in day_sessions}
 
     distraction_logs = (
@@ -299,18 +383,19 @@ def calculate_daily_scorecard(db: Session, user_id: str, target_date: date) -> d
     )
     today_distractions = [
         d for d in distraction_logs
-        if (d.session_id in session_ids) or (d.timestamp and d.timestamp.date() == target_date)
+        if (d.session_id in session_ids) or (d.timestamp and d.timestamp.date() == D)
     ]
     distraction_count = len(today_distractions)
 
     paste_from_logs = sum(1 for d in today_distractions if d.interruption_type == "paste_burst")
-    paste_from_sessions = sum(1 for s in completed_sessions if s.pasted_burst_detected)
+    paste_from_sessions = sum(1 for s in day_sessions if s.pasted_burst_detected)
     paste_burst_count = max(paste_from_logs, paste_from_sessions)
 
-    viva_sessions = [s for s in completed_sessions if s.verification_status in ("verified", "rejected")]
-    if viva_sessions:
-        passed_vivas = sum(1 for s in viva_sessions if s.verification_status == "verified")
-        viva_pass_rate = passed_vivas / len(viva_sessions)
+    viva_sessions = [s for s in day_sessions if s.verification_status in ("verified", "rejected")]
+    if viva_sessions or completed_tt_blocks:
+        passed_vivas = sum(1 for s in viva_sessions if s.verification_status == "verified") + len([b for b in completed_tt_blocks if b.id not in session_block_ids])
+        total_vivas = len(viva_sessions) + len([b for b in completed_tt_blocks if b.id not in session_block_ids])
+        viva_pass_rate = passed_vivas / total_vivas if total_vivas > 0 else 1.0
     else:
         viva_pass_rate = 1.0
 
@@ -327,11 +412,11 @@ def calculate_daily_scorecard(db: Session, user_id: str, target_date: date) -> d
         status_grade = "CRITICAL_DRIFT"
 
     return {
-        "date": target_date.isoformat(),
+        "date": D.isoformat(),
         "score": score,
         "verified_minutes": total_verified_minutes,
         "target_minutes": target_floor_minutes,
-        "completed_blocks": completed_blocks,
+        "completed_blocks": completed_blocks_count,
         "distractions": distraction_count,
         "paste_bursts": paste_burst_count,
         "status_grade": status_grade,
@@ -348,12 +433,15 @@ def get_daily_scorecard(
     Returns the Daily Execution Scorecard for current user on the given date (default today).
     """
     if date_str:
-        try:
-            target_date = datetime.strptime(date_str, "%Y-%m-%d").date()
-        except ValueError:
-            raise HTTPException(status_code=400, detail="Invalid date format. Expected YYYY-MM-DD.")
+        if date_str.lower() in ("today", "now"):
+            target_date = datetime.now(timezone.utc).date()
+        else:
+            try:
+                target_date = datetime.strptime(date_str, "%Y-%m-%d").date()
+            except ValueError:
+                raise HTTPException(status_code=400, detail="Invalid date format. Expected YYYY-MM-DD.")
     else:
-        target_date = datetime.now().date()
+        target_date = datetime.now(timezone.utc).date()
 
     scorecard = calculate_daily_scorecard(db, current_user, target_date)
     return schemas.DailyScorecardResponse(**scorecard)

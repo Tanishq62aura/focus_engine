@@ -1488,7 +1488,7 @@ def verify_viva_defense(
 ):
     """
     Submits and resolves oral viva defense verification.
-    Binds defense completion to timetable block lifecycle completion.
+    Binds defense completion to timetable block lifecycle completion atomically.
     """
     user_id = str(getattr(current_user, "id", current_user))
 
@@ -1499,6 +1499,40 @@ def verify_viva_defense(
             .filter(FocusSession.id == payload.session_id, FocusSession.user_id == user_id)
             .first()
         )
+
+    block = None
+    if payload.timetable_block_id:
+        block = (
+            db.query(models.TimetableBlock)
+            .join(models.StudyTimetable, models.TimetableBlock.timetable_id == models.StudyTimetable.id)
+            .filter(
+                models.TimetableBlock.id == payload.timetable_block_id,
+                models.StudyTimetable.user_id == user_id,
+            )
+            .first()
+        )
+
+    if not session and block:
+        session = (
+            db.query(FocusSession)
+            .filter(
+                FocusSession.user_id == user_id,
+                FocusSession.timetable_block_id == block.id,
+                FocusSession.status == "IN_PROGRESS",
+            )
+            .first()
+        )
+        if not session and block.task_id:
+            session = (
+                db.query(FocusSession)
+                .filter(
+                    FocusSession.user_id == user_id,
+                    FocusSession.task_id == block.task_id,
+                    FocusSession.status == "IN_PROGRESS",
+                )
+                .first()
+            )
+
     if not session:
         session = crud.get_active_session(db, user_id=user_id)
     if not session:
@@ -1509,6 +1543,38 @@ def verify_viva_defense(
                 FocusSession.verification_status.in_(["pending_viva", "unverified"]),
             )
             .order_by(FocusSession.ended_at.desc())
+            .first()
+        )
+
+    if not block and session and getattr(session, "timetable_block_id", None):
+        block = (
+            db.query(models.TimetableBlock)
+            .join(models.StudyTimetable, models.TimetableBlock.timetable_id == models.StudyTimetable.id)
+            .filter(
+                models.TimetableBlock.id == session.timetable_block_id,
+                models.StudyTimetable.user_id == user_id,
+            )
+            .first()
+        )
+    if not block and session and getattr(session, "task_id", None):
+        block = (
+            db.query(models.TimetableBlock)
+            .join(models.StudyTimetable, models.TimetableBlock.timetable_id == models.StudyTimetable.id)
+            .filter(
+                models.TimetableBlock.task_id == session.task_id,
+                models.StudyTimetable.user_id == user_id,
+                models.TimetableBlock.status == "IN_PROGRESS",
+            )
+            .first()
+        )
+    if not block:
+        block = (
+            db.query(models.TimetableBlock)
+            .join(models.StudyTimetable, models.TimetableBlock.timetable_id == models.StudyTimetable.id)
+            .filter(
+                models.StudyTimetable.user_id == user_id,
+                models.TimetableBlock.status == "IN_PROGRESS",
+            )
             .first()
         )
 
@@ -1529,24 +1595,58 @@ def verify_viva_defense(
         else:
             passed = bool(ans and len(ans.strip()) >= 3)
 
+    now_utc = datetime.now(timezone.utc)
+    if passed:
+        if session:
+            session.is_verified = True
+            session.status = "COMPLETED"
+            session.end_time = now_utc
+            if not session.start_time:
+                session.start_time = now_utc - timedelta(minutes=1)
+            st = session.start_time
+            if st.tzinfo is None:
+                st = st.replace(tzinfo=timezone.utc)
+            session.duration_minutes = max(1, int((now_utc - st).total_seconds() / 60))
+            if block:
+                session.timetable_block_id = block.id
+
+        if block:
+            block.status = "COMPLETED"
+            block.actual_completed_at = now_utc
+            parent_timetable = (
+                db.query(models.StudyTimetable)
+                .filter(models.StudyTimetable.id == block.timetable_id)
+                .first()
+            )
+            if parent_timetable:
+                remaining = (
+                    db.query(models.TimetableBlock)
+                    .filter(
+                        models.TimetableBlock.timetable_id == parent_timetable.id,
+                        models.TimetableBlock.id != block.id,
+                        models.TimetableBlock.status != "COMPLETED",
+                    )
+                    .count()
+                )
+                if remaining == 0:
+                    parent_timetable.status = "COMPLETED"
+    else:
+        if session:
+            session.verification_status = "rejected"
+            session.ended_at = session.ended_at or now_utc
+        if block:
+            block.status = "MISSED"
+
+    # Atomic commit in a single database transaction
+    db.commit()
     if session:
-        session.verification_status = "verified" if passed else "rejected"
-        session.ended_at = session.ended_at or datetime.now(timezone.utc)
-        if payload.timetable_block_id:
-            session.timetable_block_id = payload.timetable_block_id
-        db.commit()
-
-    block = crud.finalize_timetable_block_lifecycle(
-        db,
-        user_id=user_id,
-        session=session,
-        block_id=payload.timetable_block_id,
-        success=passed,
-    )
-
-    parent_timetable = None
+        db.refresh(session)
     if block:
-        parent_timetable = (
+        db.refresh(block)
+
+    parent_tt = None
+    if block:
+        parent_tt = (
             db.query(models.StudyTimetable)
             .filter(models.StudyTimetable.id == block.timetable_id)
             .first()
@@ -1558,7 +1658,7 @@ def verify_viva_defense(
         "session_id": session.id if session else None,
         "timetable_block_id": block.id if block else payload.timetable_block_id,
         "block_status": block.status if block else None,
-        "timetable_status": parent_timetable.status if parent_timetable else None,
+        "timetable_status": parent_tt.status if parent_tt else None,
         "message": (
             "Oral viva defense verified successfully. Timetable block completed."
             if passed

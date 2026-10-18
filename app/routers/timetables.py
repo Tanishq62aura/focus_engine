@@ -8,6 +8,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from pydantic import BaseModel
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
@@ -352,3 +353,112 @@ def start_block_session(
         "actual_started_at": block.actual_started_at,
         "session_id": session_id,
     }
+
+
+class BlockCompletePayload(BaseModel):
+    session_id: Optional[str] = None
+    passed: bool = True
+
+
+@router.post("/blocks/{block_id}/complete")
+def complete_block_endpoint(
+    block_id: int,
+    payload: Optional[BlockCompletePayload] = None,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    """
+    Atomically marks a timetable block and its active session as COMPLETED and verified.
+    """
+    user_id = _get_user_id(current_user)
+    block = (
+        db.query(TimetableBlock)
+        .join(StudyTimetable)
+        .filter(
+            TimetableBlock.id == block_id,
+            StudyTimetable.user_id == user_id,
+        )
+        .first()
+    )
+    if not block:
+        raise HTTPException(status_code=404, detail="Block not found")
+
+    session = None
+    req_session_id = payload.session_id if payload else None
+    if req_session_id:
+        session = (
+            db.query(FocusSession)
+            .filter(FocusSession.id == req_session_id, FocusSession.user_id == user_id)
+            .first()
+        )
+    if not session:
+        session = (
+            db.query(FocusSession)
+            .filter(
+                FocusSession.user_id == user_id,
+                FocusSession.timetable_block_id == block.id,
+                FocusSession.status == "IN_PROGRESS",
+            )
+            .first()
+        )
+    if not session and block.task_id:
+        session = (
+            db.query(FocusSession)
+            .filter(
+                FocusSession.user_id == user_id,
+                FocusSession.task_id == block.task_id,
+                FocusSession.status == "IN_PROGRESS",
+            )
+            .first()
+        )
+    if not session:
+        session = crud.get_active_session(db, user_id=user_id)
+
+    now_utc = datetime.now(timezone.utc)
+    if session:
+        session.is_verified = True
+        session.status = "COMPLETED"
+        session.end_time = now_utc
+        if not session.start_time:
+            session.start_time = now_utc - timedelta(minutes=1)
+        st = session.start_time
+        if st.tzinfo is None:
+            st = st.replace(tzinfo=timezone.utc)
+        session.duration_minutes = max(1, int((now_utc - st).total_seconds() / 60))
+        session.timetable_block_id = block.id
+
+    block.status = "COMPLETED"
+    block.actual_completed_at = now_utc
+
+    timetable = (
+        db.query(StudyTimetable)
+        .filter(StudyTimetable.id == block.timetable_id)
+        .first()
+    )
+    if timetable:
+        remaining = (
+            db.query(TimetableBlock)
+            .filter(
+                TimetableBlock.timetable_id == timetable.id,
+                TimetableBlock.id != block.id,
+                TimetableBlock.status != "COMPLETED",
+            )
+            .count()
+        )
+        if remaining == 0:
+            timetable.status = "COMPLETED"
+
+    # Single atomic transaction commit
+    db.commit()
+    if session:
+        db.refresh(session)
+    db.refresh(block)
+
+    return {
+        "status": "COMPLETED",
+        "block_id": block.id,
+        "session_id": session.id if session else None,
+        "actual_completed_at": block.actual_completed_at,
+        "verified": True,
+    }
+
