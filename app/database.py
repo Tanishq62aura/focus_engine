@@ -83,6 +83,8 @@ def init_db():
                     ALTER TABLE user_settings ADD COLUMN IF NOT EXISTS daily_floor_target INTEGER DEFAULT 2;
                     ALTER TABLE focus_sessions ADD COLUMN IF NOT EXISTS timetable_block_id INTEGER REFERENCES timetable_blocks(id) ON DELETE SET NULL;
                     ALTER TABLE timetable_blocks ADD COLUMN IF NOT EXISTS resources JSONB DEFAULT '[]'::jsonb;
+                    ALTER TABLE timetable_blocks ADD COLUMN IF NOT EXISTS task_id VARCHAR(36) REFERENCES tasks(id) ON DELETE SET NULL;
+                    ALTER TABLE tasks ADD COLUMN IF NOT EXISTS is_archived BOOLEAN DEFAULT FALSE;
                     ALTER TABLE study_timetables ADD COLUMN IF NOT EXISTS audit_notes TEXT;
                     ALTER TABLE study_timetables ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP WITH TIME ZONE;
                 """))
@@ -107,11 +109,21 @@ def init_db():
                             conn.execute(text("ALTER TABLE focus_sessions ADD COLUMN timetable_block_id INTEGER REFERENCES timetable_blocks(id)"))
                         except Exception:
                             pass
+                    if t == "tasks" and "is_archived" not in cols:
+                        try:
+                            conn.execute(text("ALTER TABLE tasks ADD COLUMN is_archived BOOLEAN DEFAULT 0"))
+                        except Exception:
+                            pass
             if inspector.has_table("timetable_blocks"):
                 tb_cols = [c["name"] for c in inspector.get_columns("timetable_blocks")]
                 if "resources" not in tb_cols:
                     try:
                         conn.execute(text("ALTER TABLE timetable_blocks ADD COLUMN resources JSON DEFAULT '[]'"))
+                    except Exception:
+                        pass
+                if "task_id" not in tb_cols:
+                    try:
+                        conn.execute(text("ALTER TABLE timetable_blocks ADD COLUMN task_id VARCHAR(36) REFERENCES tasks(id)"))
                     except Exception:
                         pass
             if inspector.has_table("study_timetables"):

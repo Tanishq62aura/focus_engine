@@ -363,6 +363,7 @@
             </div>
             <div id="task-banner" class="text-center">
               <p id="session-task-name" class="text-lg font-bold text-zinc-100"></p>
+              <p id="active-task-title" class="text-lg font-bold text-zinc-100 hidden"></p>
               <p id="session-goal-banner" class="text-sm mt-1"></p>
             </div>
           </div>
@@ -436,7 +437,7 @@
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
             <label class="text-xs text-zinc-400 mb-1 block">Task</label>
-            <select id="qs-task" class="w-full bg-zinc-900/80 border border-zinc-700/80 rounded-lg px-3 py-2 text-sm text-zinc-100 focus:outline-none focus:border-zinc-400 focus:ring-1 focus:ring-zinc-400">
+            <select id="task-select" name="qs-task" class="w-full bg-zinc-900/80 border border-zinc-700/80 rounded-lg px-3 py-2 text-sm text-zinc-100 focus:outline-none focus:border-zinc-400 focus:ring-1 focus:ring-zinc-400">
               <option value="">— Select task —</option>
             </select>
           </div>
@@ -2129,6 +2130,13 @@
           renderCategoryProposalCard(botBubble, res.data);
         }
 
+        // Dynamically sync HUD task dropdown when conversational tasks/categories change or timetables stage
+        if (res.action === 'MANAGE_TASK_CATEGORIES' || res.action === 'TIMETABLE_CARD' || res.action === 'TIMETABLE_RESCHEDULED') {
+          if (typeof loadTasks === 'function') {
+            await loadTasks();
+          }
+        }
+
         // Check for Interactive Timetable Card Flow
         const isRescheduled = res.action === 'TIMETABLE_RESCHEDULED' || Boolean(res.data && res.data.is_rescheduled);
         const timetablePayload = res.timetable || (res.action === 'TIMETABLE_CARD' || res.action === 'TIMETABLE_RESCHEDULED' ? res.data : null) || res.data?.timetable;
@@ -2543,6 +2551,11 @@
 
       const taskNameEl = document.getElementById('session-task-name');
       if (taskNameEl) taskNameEl.textContent = activeTaskData?.title || 'Focus Session';
+      const activeTitleEl = document.getElementById('active-task-title');
+      if (activeTitleEl) {
+        activeTitleEl.textContent = activeTaskData?.title || 'Focus Session';
+        activeTitleEl.classList.remove('hidden');
+      }
 
       if (typeof updateGoalBanner === 'function') updateGoalBanner();
       if (typeof updateZenViewData === 'function') updateZenViewData();
@@ -2634,10 +2647,21 @@
         const topic = (activeBlock && activeBlock.topic) || `Timetable Day ${res.day_number || blockId}`;
         const duration = (activeBlock && activeBlock.duration_minutes) || res.duration_minutes || 60;
         const track = (window.activeTimetable && window.activeTimetable.track_id) || 'coding';
+        const targetTaskId = (res && res.task_id) || (activeBlock && activeBlock.task_id);
 
-        // Check if task exists, or auto-create task
-        let matchingTask = (tasks || []).find(t => t.title === topic);
+        // Check if task exists by task_id or topic, or auto-create task
+        let matchingTask = null;
+        if (targetTaskId) {
+          matchingTask = (tasks || []).find(t => String(t.id) === String(targetTaskId));
+          if (!matchingTask) {
+            if (typeof loadTasks === 'function') await loadTasks();
+            matchingTask = (tasks || []).find(t => String(t.id) === String(targetTaskId));
+          }
+        }
         if (!matchingTask) {
+          matchingTask = (tasks || []).find(t => t.title === topic);
+        }
+        if (!matchingTask && !targetTaskId) {
           try {
             matchingTask = await api('POST', '/tasks', {
               title: topic,
@@ -2656,8 +2680,16 @@
           }
         }
 
-        if (matchingTask) {
-          selectTask(matchingTask.id);
+        const boundTaskId = targetTaskId || (matchingTask && matchingTask.id);
+        if (boundTaskId) {
+          selectTask(boundTaskId);
+        }
+
+        // Sync HUD active task banner (#active-task-title)
+        const activeTitleEl = document.getElementById('active-task-title');
+        if (activeTitleEl) {
+          activeTitleEl.textContent = (matchingTask && matchingTask.title) || topic;
+          activeTitleEl.classList.remove('hidden');
         }
 
         // Immediately invoke HUD timer initializer so circular timer starts ticking
@@ -3333,16 +3365,31 @@
     }
 
     function renderTaskDropdown(tasks) {
-      const sel = document.getElementById('qs-task');
+      const sel = document.getElementById('task-select') || document.getElementById('qs-task');
+      if (!sel) return;
       const prev = sel.value;
-      sel.innerHTML = '<option value="">— Select task —</option>' + tasks.map(t =>
+      const validTasks = (tasks || []).filter(t => !t.is_archived);
+      sel.innerHTML = '<option value="">— Select task —</option>' + validTasks.map(t =>
         `<option value="${escapeHtml(t.id)}">${escapeHtml(t.title)} (${escapeHtml(t.category)})</option>`
       ).join('');
       if (prev) sel.value = prev;
     }
 
     function selectTask(taskId) {
-      document.getElementById('qs-task').value = taskId;
+      const sel = document.getElementById('task-select') || document.getElementById('qs-task');
+      if (sel) sel.value = taskId;
+      const task = (tasks || []).find(t => String(t.id) === String(taskId));
+      const activeTitleEl = document.getElementById('active-task-title');
+      if (activeTitleEl) {
+        if (task) {
+          activeTitleEl.textContent = task.title;
+          activeTitleEl.classList.remove('hidden');
+        }
+      }
+      const sessionTaskNameEl = document.getElementById('session-task-name');
+      if (sessionTaskNameEl && task) {
+        sessionTaskNameEl.textContent = task.title;
+      }
       toast('Task selected. Click Start or 5-min.', 'info');
     }
 
@@ -3469,7 +3516,8 @@
 
     async function startSession(isFiveMin = false) {
       if (activeSessionId) { toast('Session already active!', 'warning'); return; }
-      const taskId = document.getElementById('qs-task').value;
+      const taskSelectEl = document.getElementById('task-select') || document.getElementById('qs-task');
+      const taskId = taskSelectEl ? taskSelectEl.value : '';
       if (!taskId) { toast('Please select a task first.', 'warning'); return; }
 
       const selectedTask = tasks.find(t => t.id === taskId);
@@ -3478,8 +3526,7 @@
 
       // Gate critical tracks / high resistance (>75 score)
       if (isCriticalTrack && !microStartConfirmed && !isFiveMin) {
-        const taskSelect = document.getElementById('qs-task');
-        if (taskSelect) taskSelect.disabled = true;
+        if (taskSelectEl) taskSelectEl.disabled = true;
         openMicroStartModal(taskId);
         toast('Critical track resistance detected (>75). 5-min micro-start floor enforced.', 'warning');
         return;
@@ -3545,7 +3592,7 @@
       } catch(e) {
         toast('Failed to start: ' + e.message, 'error');
       } finally {
-        const taskSelect = document.getElementById('qs-task');
+        const taskSelect = document.getElementById('task-select') || document.getElementById('qs-task');
         if (taskSelect) taskSelect.disabled = false;
       }
     }
@@ -3675,6 +3722,11 @@
       exitZenMode();
       document.getElementById('hud-idle').classList.remove('hidden');
       document.getElementById('hud-active').classList.add('hidden');
+      const activeTaskTitleEl = document.getElementById('active-task-title');
+      if (activeTaskTitleEl) {
+        activeTaskTitleEl.textContent = '';
+        activeTaskTitleEl.classList.add('hidden');
+      }
       document.getElementById('timer-display').textContent = '00:00:00';
       document.getElementById('timer-circle').style.borderColor = '';
       document.getElementById('timer-display').style.color = '';

@@ -5,7 +5,7 @@ Pydantic v2 request/response schemas for the Focus Engine API.
 from __future__ import annotations
 
 from datetime import date, datetime, time
-from typing import Any, Dict, List, Literal, Optional
+from typing import Any, Dict, List, Literal, Optional, Union
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
@@ -42,6 +42,7 @@ class TaskRead(BaseModel):
     target_goal: Optional[int] = 50
     stretch_goal: Optional[int] = 90
     is_completed: bool
+    is_archived: bool = False
     created_at: datetime
 
     model_config = {"from_attributes": True}
@@ -513,6 +514,7 @@ class TimetableBlockBase(BaseModel):
     deliverable_spec: str
     verification_rules: str
     resources: Optional[List[str]] = Field(default_factory=list)
+    task_id: Optional[Union[int, str]] = None
 
     @model_validator(mode="after")
     def validate_window(self):

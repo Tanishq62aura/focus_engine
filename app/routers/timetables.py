@@ -63,9 +63,30 @@ def stage_timetable(
     db.flush()
 
     for block_data in payload.blocks:
+        block_dict = block_data.model_dump()
+        task = (
+            db.query(Task)
+            .filter(Task.user_id == user_id, Task.title == block_data.topic)
+            .first()
+        )
+        if not task:
+            task = Task(
+                user_id=user_id,
+                title=block_data.topic,
+                category=payload.track_id or "coding",
+                priority=1,
+                estimated_duration_min=block_data.duration_minutes,
+                min_goal=min(25, block_data.duration_minutes),
+                target_goal=block_data.duration_minutes,
+                stretch_goal=int(block_data.duration_minutes * 1.2),
+            )
+            db.add(task)
+            db.flush()
+
+        block_dict["task_id"] = task.id
         block = TimetableBlock(
             timetable_id=timetable.id,
-            **block_data.model_dump(),
+            **block_dict,
         )
         db.add(block)
 
@@ -216,6 +237,7 @@ def start_block_session(
             return {
                 "status": "started",
                 "block_id": block.id,
+                "task_id": block.task_id,
                 "day_number": block.day_number,
                 "duration_minutes": block.duration_minutes,
                 "early_start": False,
@@ -265,12 +287,11 @@ def start_block_session(
     block.status = "IN_PROGRESS"
     block.actual_started_at = utc_now
 
-    session_id = None
-    if active_session:
-        active_session.timetable_block_id = block.id
-        session_id = active_session.id
-    else:
-        # Create corresponding task and session for seamless tracking
+    task = None
+    if block.task_id:
+        task = db.query(Task).filter(Task.id == block.task_id).first()
+
+    if not task:
         task = (
             db.query(Task)
             .filter(Task.user_id == user_id, Task.title == block.topic)
@@ -282,10 +303,19 @@ def start_block_session(
                 title=block.topic,
                 category="coding",
                 estimated_duration_min=block.duration_minutes,
+                min_goal=min(25, block.duration_minutes),
+                target_goal=block.duration_minutes,
+                stretch_goal=int(block.duration_minutes * 1.2),
             )
             db.add(task)
             db.flush()
+        block.task_id = task.id
 
+    session_id = None
+    if active_session:
+        active_session.timetable_block_id = block.id
+        session_id = active_session.id
+    else:
         new_sess = FocusSession(
             user_id=user_id,
             task_id=task.id,
@@ -303,6 +333,7 @@ def start_block_session(
     return {
         "status": "started",
         "block_id": block.id,
+        "task_id": block.task_id,
         "day_number": block.day_number,
         "duration_minutes": block.duration_minutes,
         "early_start": early_start,

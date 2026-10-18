@@ -13,12 +13,13 @@ from typing import Any, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app import crud, models
 from app.auth import get_current_user
 from app.database import get_db
-from app.models import FocusSession, StudyTimetable, TimetableBlock
+from app.models import FocusSession, StudyTimetable, Task, TimetableBlock
 from app.schemas import CategoryApprovalRequest, SupportChatRequest, SupportChatResponse
 
 logger = logging.getLogger(__name__)
@@ -112,6 +113,13 @@ System Architecture Knowledge:
    - When the user asks to reschedule, delay, postpone, adjust execution windows, or recover timeline for their active study timetable, invoke the `reschedule_active_timetable` tool.
    - Provide `shift_days` (positive integer to shift forward, negative to shift backward), `reason`, and/or specific `adjustments` for individual days (`day_index`, `new_window_start`, `new_window_deadline`, `new_target_date`).
    - Completed blocks will remain locked and untouched; pending and in-progress blocks will be safely adjusted.
+
+5. Conversational Task & Category Management:
+   - When the user asks to create, add, update, archive, or list task categories or tracks on the HUD, invoke the `manage_task_categories` tool.
+   - For `create`, provide the category `name`, optional `target_minutes` (default 45), and optional `priority` ("P1", "P2", "P3").
+   - For `archive`, provide the category `name` to set `is_archived = True`.
+   - For `update`, provide the modified parameters.
+   - For `list`, retrieve all active user tasks.
 """
 
 
@@ -350,6 +358,38 @@ RESCHEDULE_ACTIVE_TIMETABLE_DECLARATION = {
 }
 
 
+MANAGE_TASK_CATEGORIES_DECLARATION = {
+    "name": "manage_task_categories",
+    "description": (
+        "Create, update, archive, or list user task categories on the HUD. "
+        "Use when the user requests track modifications, task categorization, or priority adjustments."
+    ),
+    "parameters": {
+        "type": "OBJECT",
+        "properties": {
+            "action": {
+                "type": "STRING",
+                "enum": ["create", "update", "archive", "list"]
+            },
+            "categories": {
+                "type": "ARRAY",
+                "items": {
+                    "type": "OBJECT",
+                    "properties": {
+                        "name": {"type": "STRING"},
+                        "target_minutes": {"type": "INTEGER", "default": 45},
+                        "priority": {"type": "STRING", "enum": ["P1", "P2", "P3"], "default": "P1"},
+                        "is_archived": {"type": "BOOLEAN", "default": False}
+                    },
+                    "required": ["name"]
+                }
+            }
+        },
+        "required": ["action"]
+    }
+}
+
+
 def _parse_time_str(time_val: Any) -> time:
     """Parse time string supporting HH:MM and HH:MM:SS format."""
     if isinstance(time_val, time):
@@ -509,8 +549,27 @@ def execute_stage_window_timetable(
     db.add(timetable)
     db.flush()
 
-    # Insert child TimetableBlock rows
+    # Insert child TimetableBlock rows & ensure matching tasks exist
     for b in parsed_blocks:
+        task = (
+            db.query(Task)
+            .filter(Task.user_id == user_id, Task.title == b.topic)
+            .first()
+        )
+        if not task:
+            task = Task(
+                user_id=user_id,
+                title=b.topic,
+                category=timetable.track_id or "coding",
+                priority=1,
+                estimated_duration_min=b.duration_minutes,
+                min_goal=min(25, b.duration_minutes),
+                target_goal=b.duration_minutes,
+                stretch_goal=int(b.duration_minutes * 1.2),
+            )
+            db.add(task)
+            db.flush()
+
         block_row = TimetableBlock(
             timetable_id=timetable.id,
             day_number=b.day_number,
@@ -523,6 +582,7 @@ def execute_stage_window_timetable(
             verification_rules=b.verification_rules,
             resources=b.resources or [],
             status="PENDING",
+            task_id=task.id,
         )
         db.add(block_row)
 
@@ -538,6 +598,7 @@ def execute_stage_window_timetable(
         "blocks": [
             {
                 "id": b.id,
+                "task_id": b.task_id,
                 "day_number": b.day_number,
                 "target_date": str(b.target_date),
                 "window": f"{b.window_start.strftime('%H:%M')} - {b.window_deadline.strftime('%H:%M')}",
@@ -834,6 +895,188 @@ def _extract_timetable_proposal(message: str) -> Optional[dict[str, Any]]:
     }
 
 
+def execute_manage_task_categories(
+    db: Session,
+    current_user: Any,
+    args: dict[str, Any],
+) -> dict[str, Any]:
+    from app.routers.timetables import _get_user_id
+
+    user_id = _get_user_id(current_user)
+    action = str(args.get("action") or "list").lower()
+    categories_input = args.get("categories") or []
+
+    pri_map = {"p1": 1, "p2": 2, "p3": 3, "1": 1, "2": 2, "3": 3, 1: 1, 2: 2, 3: 3}
+    modified_tasks = []
+
+    if action == "create":
+        for cat in categories_input:
+            name = str(cat.get("name") or "").strip()
+            if not name:
+                continue
+            existing = db.query(Task).filter(Task.user_id == user_id, func.lower(Task.title) == name.lower()).first()
+            if not existing:
+                existing = db.query(Task).filter(Task.user_id == user_id, Task.title.ilike(f"%{name}%")).first()
+            if existing:
+                if getattr(existing, "is_archived", False):
+                    existing.is_archived = False
+                    existing.is_completed = False
+                    db.commit()
+                modified_tasks.append({
+                    "id": existing.id,
+                    "title": existing.title,
+                    "name": existing.title,
+                    "category": existing.category,
+                    "priority": f"P{existing.priority}",
+                    "target_minutes": existing.estimated_duration_min,
+                    "status": "already_exists",
+                })
+            else:
+                raw_pri = str(cat.get("priority") or "P1").lower()
+                pri = pri_map.get(raw_pri, 1)
+                dur = int(cat.get("target_minutes") or 45)
+                new_task = Task(
+                    user_id=user_id,
+                    title=name,
+                    category=cat.get("category") or "coding",
+                    priority=pri,
+                    estimated_duration_min=dur,
+                    min_goal=min(25, dur),
+                    target_goal=dur,
+                    stretch_goal=int(dur * 1.5),
+                    is_archived=False,
+                    is_completed=False,
+                )
+                db.add(new_task)
+                db.flush()
+                modified_tasks.append({
+                    "id": new_task.id,
+                    "title": new_task.title,
+                    "name": new_task.title,
+                    "category": new_task.category,
+                    "priority": f"P{new_task.priority}",
+                    "target_minutes": new_task.estimated_duration_min,
+                    "status": "created",
+                })
+        db.commit()
+        msg = f"Created/verified {len(modified_tasks)} task category(ies)."
+
+    elif action == "archive":
+        for cat in categories_input:
+            name = str(cat.get("name") or "").strip()
+            if not name:
+                continue
+            matching = db.query(Task).filter(Task.user_id == user_id, func.lower(Task.title) == name.lower()).all()
+            if not matching:
+                matching = db.query(Task).filter(Task.user_id == user_id, Task.title.ilike(f"%{name}%")).all()
+            for t in matching:
+                t.is_archived = True
+                t.is_completed = True
+                modified_tasks.append({
+                    "id": t.id,
+                    "title": t.title,
+                    "name": t.title,
+                    "status": "archived",
+                })
+        db.commit()
+        msg = f"Archived {len(modified_tasks)} task category(ies)."
+
+    elif action == "update":
+        for cat in categories_input:
+            name = str(cat.get("name") or "").strip()
+            if not name:
+                continue
+            t = db.query(Task).filter(Task.user_id == user_id, func.lower(Task.title) == name.lower()).first()
+            if not t:
+                t = db.query(Task).filter(Task.user_id == user_id, Task.title.ilike(f"%{name}%")).first()
+            if t:
+                if "priority" in cat:
+                    raw_pri = str(cat.get("priority")).lower()
+                    t.priority = pri_map.get(raw_pri, t.priority)
+                if "target_minutes" in cat:
+                    dur = int(cat["target_minutes"])
+                    t.estimated_duration_min = dur
+                    t.target_goal = dur
+                    t.stretch_goal = int(dur * 1.5)
+                if "is_archived" in cat:
+                    t.is_archived = bool(cat["is_archived"])
+                modified_tasks.append({
+                    "id": t.id,
+                    "title": t.title,
+                    "name": t.title,
+                    "priority": f"P{t.priority}",
+                    "target_minutes": t.estimated_duration_min,
+                    "status": "updated",
+                })
+        db.commit()
+        msg = f"Updated {len(modified_tasks)} task category(ies)."
+
+    else:  # list
+        active_tasks = db.query(Task).filter(Task.user_id == user_id, Task.is_archived == False).all()
+        modified_tasks = [
+            {
+                "id": t.id,
+                "title": t.title,
+                "name": t.title,
+                "category": t.category,
+                "priority": f"P{t.priority}",
+                "target_minutes": t.estimated_duration_min,
+            }
+            for t in active_tasks
+        ]
+        msg = f"Retrieved {len(modified_tasks)} active task categories."
+
+    return {
+        "action": action,
+        "categories": modified_tasks,
+        "modified_tasks": modified_tasks,
+        "message": msg,
+    }
+
+
+def _extract_task_management_intent(message: str) -> Optional[dict[str, Any]]:
+    raw_msg = message.strip()
+    low = raw_msg.lower()
+
+    # Check for archive: "archive task category X", "archive category X", "archive task X", "archive X"
+    arch_m = re.search(r"archive\s+(?:task\s+category|task|category|track)?\s*[:\"']?([a-zA-Z0-9\s\-_]+?)[\"']?$", raw_msg, re.I)
+    if arch_m and not any(k in low for k in ["timetable", "schedule"]):
+        cat_name = arch_m.group(1).strip()
+        cat_name = re.sub(r"\b(p[1-3])\b", "", cat_name, flags=re.I)
+        cat_name = re.sub(r"\b\d+\s*(?:m|min|minutes?)\b", "", cat_name, flags=re.I).strip(" :\"'")
+        if cat_name:
+            return {
+                "action": "archive",
+                "categories": [{"name": cat_name}],
+            }
+
+    # Check for create: "create task category X", "add category X", "new category X", etc.
+    create_m = re.search(r"(?:create|add|new)\s+(?:task\s+category|task|category|track)\s*[:\"']?([a-zA-Z0-9\s\-_]+?)[\"']?$", raw_msg, re.I)
+    if create_m and not any(k in low for k in ["timetable", "study plan"]):
+        cat_name = create_m.group(1).strip()
+        dur_m = re.search(r"(\d+)\s*(?:m|min|minute|minutes)", low)
+        dur = int(dur_m.group(1)) if dur_m else 45
+        pri = "P1"
+        if re.search(r"\bp2\b", low): pri = "P2"
+        elif re.search(r"\bp3\b", low): pri = "P3"
+        cat_name = re.sub(r"\b(p[1-3])\b", "", cat_name, flags=re.I)
+        cat_name = re.sub(r"\b\d+\s*(?:m|min|minutes?)\b", "", cat_name, flags=re.I).strip(" :\"'")
+        if cat_name:
+            return {
+                "action": "create",
+                "categories": [{"name": cat_name, "target_minutes": dur, "priority": pri}],
+            }
+
+    # Check for list: "list categories", "list my tasks", "show categories", "show tasks"
+    if any(k in low for k in ["list categories", "list my tasks", "show categories", "show tasks", "list tasks"]):
+        return {
+            "action": "list",
+            "categories": [],
+        }
+
+    return None
+
+
 def _generate_fallback_response(query: str) -> str:
     q = query.lower()
 
@@ -948,6 +1191,20 @@ def support_chat(
         except Exception as err:
             logger.warning("Direct timetable reschedule failed: %s", err)
 
+    # Check for Conversational Task & Category Management Flow (Direct semantic extractor / fallback)
+    task_intent = _extract_task_management_intent(user_msg)
+    if task_intent:
+        try:
+            res_payload = execute_manage_task_categories(db, current_user, task_intent)
+            return SupportChatResponse(
+                reply=res_payload["message"],
+                session_id=payload.session_id,
+                action="MANAGE_TASK_CATEGORIES",
+                data=res_payload,
+            )
+        except Exception as err:
+            logger.warning("Direct task category management failed: %s", err)
+
     # Check for Window-Anchored Study Timetable Flow (Direct semantic extractor / fallback)
     timetable_intent = _extract_timetable_proposal(user_msg)
     if timetable_intent:
@@ -988,7 +1245,11 @@ def support_chat(
                             system_instruction=_SYSTEM_PROMPT,
                             temperature=0.6,
                             max_output_tokens=500,
-                            tools=[{"function_declarations": [STAGE_WINDOW_TIMETABLE_DECLARATION, RESCHEDULE_ACTIVE_TIMETABLE_DECLARATION]}],
+                            tools=[{"function_declarations": [
+                                STAGE_WINDOW_TIMETABLE_DECLARATION,
+                                RESCHEDULE_ACTIVE_TIMETABLE_DECLARATION,
+                                MANAGE_TASK_CATEGORIES_DECLARATION,
+                            ]}],
                         ),
                     )
                     # Inspect tool / function calls from Gemini
@@ -1021,6 +1282,15 @@ def support_chat(
                                     session_id=payload.session_id,
                                     action="TIMETABLE_RESCHEDULED",
                                     data=card_payload,
+                                )
+                            elif fc.name == "manage_task_categories":
+                                args = dict(fc.args) if fc.args else {}
+                                res_payload = execute_manage_task_categories(db, current_user, args)
+                                return SupportChatResponse(
+                                    reply=res_payload["message"],
+                                    session_id=payload.session_id,
+                                    action="MANAGE_TASK_CATEGORIES",
+                                    data=res_payload,
                                 )
 
                     if response and response.text:

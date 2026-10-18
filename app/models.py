@@ -55,6 +55,7 @@ class Task(Base):
     stretch_goal = Column(Integer, nullable=False, default=90)
 
     is_completed = Column(Boolean, nullable=False, default=False)
+    is_archived = Column(Boolean, nullable=False, default=False)
     created_at = Column(DateTime(timezone=True), nullable=False, default=_utcnow)
 
     schedules = relationship("Schedule", back_populates="task", cascade="all, delete")
@@ -284,6 +285,7 @@ class TimetableBlock(Base):
     verification_rules = Column(Text, nullable=False)
     resources = Column(JSON, nullable=True, default=list)  # URLs, docs, video references
     status = Column(String(32), nullable=False, default="PENDING")  # PENDING, IN_PROGRESS, COMPLETED, FORFEIT
+    task_id = Column(String(36), ForeignKey("tasks.id", ondelete="SET NULL"), nullable=True)
     actual_started_at = Column(DateTime(timezone=True), nullable=True)
     actual_completed_at = Column(DateTime(timezone=True), nullable=True)
 
