@@ -359,11 +359,10 @@
           <!-- Timer display -->
           <div class="flex flex-col items-center mb-6">
             <div id="timer-circle" class="timer-pulse w-40 h-40 rounded-full border-4 border-zinc-700 flex items-center justify-center mb-3">
-              <div id="timer-display" class="mono text-4xl font-black text-zinc-100">00:00:00</div>
+              <div id="timer-display" class="mono text-4xl font-black text-zinc-100">00:00</div>
             </div>
             <div id="task-banner" class="text-center">
-              <p id="session-task-name" class="text-lg font-bold text-zinc-100"></p>
-              <p id="active-task-title" class="text-lg font-bold text-zinc-100 hidden"></p>
+              <h3 id="active-task-title" class="text-lg font-bold text-zinc-100"></h3>
               <p id="session-goal-banner" class="text-sm mt-1"></p>
             </div>
           </div>
@@ -2556,12 +2555,9 @@
       if (hudIdle) hudIdle.classList.add('hidden');
       if (hudActive) hudActive.classList.remove('hidden');
 
-      const taskNameEl = document.getElementById('session-task-name');
-      if (taskNameEl) taskNameEl.textContent = activeTaskData?.title || 'Focus Session';
-      const activeTitleEl = document.getElementById('active-task-title');
+      const activeTitleEl = document.getElementById('active-task-title') || document.getElementById('session-task-name');
       if (activeTitleEl) {
         activeTitleEl.textContent = activeTaskData?.title || 'Focus Session';
-        activeTitleEl.classList.remove('hidden');
       }
 
       if (typeof updateGoalBanner === 'function') updateGoalBanner();
@@ -2696,7 +2692,6 @@
         const activeTitleEl = document.getElementById('active-task-title');
         if (activeTitleEl) {
           activeTitleEl.textContent = (matchingTask && matchingTask.title) || topic;
-          activeTitleEl.classList.remove('hidden');
         }
 
         // Immediately invoke HUD timer initializer so circular timer starts ticking
@@ -3387,15 +3382,8 @@
       if (sel) sel.value = taskId;
       const task = (tasks || []).find(t => String(t.id) === String(taskId));
       const activeTitleEl = document.getElementById('active-task-title');
-      if (activeTitleEl) {
-        if (task) {
-          activeTitleEl.textContent = task.title;
-          activeTitleEl.classList.remove('hidden');
-        }
-      }
-      const sessionTaskNameEl = document.getElementById('session-task-name');
-      if (sessionTaskNameEl && task) {
-        sessionTaskNameEl.textContent = task.title;
+      if (activeTitleEl && task) {
+        activeTitleEl.textContent = task.title;
       }
       toast('Task selected. Click Start or 5-min.', 'info');
     }
@@ -3568,7 +3556,8 @@
         triggerHaptic('heavy');
         document.getElementById('hud-idle').classList.add('hidden');
         document.getElementById('hud-active').classList.remove('hidden');
-        document.getElementById('session-task-name').textContent = activeTaskData?.title || 'Task';
+        const titleEl = document.getElementById('active-task-title') || document.getElementById('session-task-name');
+        if (titleEl) titleEl.textContent = activeTaskData?.title || 'Task';
         updateGoalBanner();
 
         const lb = document.getElementById('latency-banner');
@@ -3628,48 +3617,68 @@
       if (strEl) strEl.textContent = `Stretch: ${activeTaskData.stretch_goal}m`;
     }
 
+    function updateSessionTimer() {
+      const sess = currentSession || window.currentSession || window.activeSession;
+      let start = sessionStartTime;
+      if (!start && sess) {
+        const raw = sess.start_time || sess.started_at || sess.actual_started_at;
+        if (raw) start = new Date(raw);
+      }
+      if (!start) {
+        start = new Date();
+        sessionStartTime = start;
+      }
+
+      const elapsed = Math.max(0, Math.floor((new Date() - start) / 1000));
+      const m = String(Math.floor(elapsed / 60)).padStart(2, '0');
+      const s = String(elapsed % 60).padStart(2, '0');
+      const timeStr = `${m}:${s}`;
+
+      const timerEl = document.getElementById('timer-display');
+      if (timerEl) {
+        timerEl.textContent = timeStr;
+      }
+      const zenDisplay = document.getElementById('zen-timer-display');
+      if (zenDisplay) {
+        zenDisplay.textContent = timeStr;
+      }
+
+      // Color progression by goal
+      if (activeTaskData) {
+        const elapsedMin = elapsed / 60;
+        const tc = document.getElementById('timer-circle');
+        const targetMin = activeTaskData.target_goal || 50;
+        const pct = Math.min(100, Math.round((elapsedMin / targetMin) * 100));
+        const zenBar = document.getElementById('zen-progress-bar');
+        if (zenBar) zenBar.style.width = `${pct}%`;
+
+        if (elapsedMin >= activeTaskData.stretch_goal) {
+          if (tc) tc.style.borderColor = '#10b981';
+          if (timerEl) timerEl.style.color = '#10b981';
+          if (zenDisplay) zenDisplay.style.color = '#10b981';
+        } else if (elapsedMin >= activeTaskData.target_goal) {
+          if (tc) tc.style.borderColor = '#fafafa';
+          if (timerEl) timerEl.style.color = '#fafafa';
+          if (zenDisplay) zenDisplay.style.color = '#fafafa';
+        } else if (elapsedMin >= activeTaskData.min_goal) {
+          if (tc) tc.style.borderColor = '#f59e0b';
+          if (timerEl) timerEl.style.color = '#f59e0b';
+          if (zenDisplay) zenDisplay.style.color = '#f59e0b';
+        } else {
+          if (tc) tc.style.borderColor = '';
+          if (timerEl) timerEl.style.color = '#fafafa';
+          if (zenDisplay) zenDisplay.style.color = '#e4e4e7';
+        }
+      }
+    }
+    window.updateSessionTimer = updateSessionTimer;
+
     function startTimer() {
       clearInterval(timerInterval);
-      timerInterval = setInterval(() => {
-        const elapsed = Math.floor((new Date() - sessionStartTime) / 1000);
-        const h = String(Math.floor(elapsed / 3600)).padStart(2, '0');
-        const m = String(Math.floor((elapsed % 3600) / 60)).padStart(2, '0');
-        const s = String(elapsed % 60).padStart(2, '0');
-        const isBlind = Boolean(window.currentSettings && window.currentSettings.blind_focus_mode);
-        const timeStr = isBlind ? '••:••' : `${h}:${m}:${s}`;
-        document.getElementById('timer-display').textContent = timeStr;
-
-        // Zen Kiosk timer & progress
-        const zenDisplay = document.getElementById('zen-timer-display');
-        if (zenDisplay) zenDisplay.textContent = timeStr;
-
-        // Color progression by goal
-        if (activeTaskData) {
-          const elapsedMin = elapsed / 60;
-          const tc = document.getElementById('timer-circle');
-          const targetMin = activeTaskData.target_goal || 50;
-          const pct = Math.min(100, Math.round((elapsedMin / targetMin) * 100));
-          const zenBar = document.getElementById('zen-progress-bar');
-          if (zenBar) zenBar.style.width = `${pct}%`;
-
-          if (elapsedMin >= activeTaskData.stretch_goal) {
-            tc.style.borderColor = '#10b981';
-            document.getElementById('timer-display').style.color = '#10b981';
-            if (zenDisplay) zenDisplay.style.color = '#10b981';
-          } else if (elapsedMin >= activeTaskData.target_goal) {
-            tc.style.borderColor = '#fafafa';
-            document.getElementById('timer-display').style.color = '#fafafa';
-            if (zenDisplay) zenDisplay.style.color = '#fafafa';
-          } else if (elapsedMin >= activeTaskData.min_goal) {
-            tc.style.borderColor = '#f59e0b';
-            document.getElementById('timer-display').style.color = '#f59e0b';
-            if (zenDisplay) zenDisplay.style.color = '#f59e0b';
-          } else {
-            if (zenDisplay) zenDisplay.style.color = '#e4e4e7';
-          }
-        }
-      }, 1000);
+      updateSessionTimer();
+      timerInterval = setInterval(updateSessionTimer, 1000);
     }
+    window.startTimer = startTimer;
 
     async function endSession() {
       if (!activeSessionId) return;
@@ -3732,9 +3741,8 @@
       const activeTaskTitleEl = document.getElementById('active-task-title');
       if (activeTaskTitleEl) {
         activeTaskTitleEl.textContent = '';
-        activeTaskTitleEl.classList.add('hidden');
       }
-      document.getElementById('timer-display').textContent = '00:00:00';
+      document.getElementById('timer-display').textContent = '00:00';
       document.getElementById('timer-circle').style.borderColor = '';
       document.getElementById('timer-display').style.color = '';
       document.getElementById('latency-banner').classList.add('hidden');
