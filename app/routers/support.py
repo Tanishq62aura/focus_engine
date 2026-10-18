@@ -1494,23 +1494,33 @@ def verify_viva_defense(
 
     session = None
     if payload.session_id:
-        session = (
-            db.query(FocusSession)
-            .filter(FocusSession.id == payload.session_id, FocusSession.user_id == user_id)
-            .first()
-        )
+        session = db.get(FocusSession, payload.session_id)
+        if session and session.user_id != user_id:
+            session = None
+        if not session:
+            session = (
+                db.query(FocusSession)
+                .filter(FocusSession.id == payload.session_id, FocusSession.user_id == user_id)
+                .first()
+            )
 
     block = None
     if payload.timetable_block_id:
-        block = (
-            db.query(models.TimetableBlock)
-            .join(models.StudyTimetable, models.TimetableBlock.timetable_id == models.StudyTimetable.id)
-            .filter(
-                models.TimetableBlock.id == payload.timetable_block_id,
-                models.StudyTimetable.user_id == user_id,
+        block = db.get(models.TimetableBlock, payload.timetable_block_id)
+        if block:
+            tt = db.get(models.StudyTimetable, block.timetable_id)
+            if tt and tt.user_id != user_id:
+                block = None
+        if not block:
+            block = (
+                db.query(models.TimetableBlock)
+                .join(models.StudyTimetable, models.TimetableBlock.timetable_id == models.StudyTimetable.id)
+                .filter(
+                    models.TimetableBlock.id == payload.timetable_block_id,
+                    models.StudyTimetable.user_id == user_id,
+                )
+                .first()
             )
-            .first()
-        )
 
     if not session and block:
         session = (
@@ -1596,25 +1606,34 @@ def verify_viva_defense(
             passed = bool(ans and len(ans.strip()) >= 3)
 
     now_utc = datetime.utcnow()
+    parent_timetable = None
     if passed:
         if block:
             block.status = "COMPLETED"
             block.actual_completed_at = now_utc
-            parent_timetable = (
-                db.query(models.StudyTimetable)
-                .filter(models.StudyTimetable.id == block.timetable_id)
-                .first()
-            )
-            if parent_timetable:
-                remaining = (
-                    db.query(models.TimetableBlock)
-                    .filter(
-                        models.TimetableBlock.timetable_id == parent_timetable.id,
-                        models.TimetableBlock.id != block.id,
-                        models.TimetableBlock.status != "COMPLETED",
-                    )
-                    .count()
+            parent_timetable = db.get(models.StudyTimetable, block.timetable_id)
+            if not parent_timetable:
+                parent_timetable = (
+                    db.query(models.StudyTimetable)
+                    .filter(models.StudyTimetable.id == block.timetable_id)
+                    .first()
                 )
+            if parent_timetable:
+                if parent_timetable.blocks:
+                    remaining = sum(
+                        1 for b in parent_timetable.blocks
+                        if b.id != block.id and b.status != "COMPLETED"
+                    )
+                else:
+                    remaining = (
+                        db.query(models.TimetableBlock)
+                        .filter(
+                            models.TimetableBlock.timetable_id == parent_timetable.id,
+                            models.TimetableBlock.id != block.id,
+                            models.TimetableBlock.status != "COMPLETED",
+                        )
+                        .count()
+                    )
                 if remaining == 0:
                     parent_timetable.status = "COMPLETED"
 
@@ -1677,13 +1696,9 @@ def verify_viva_defense(
 
     # Atomic commit in a single database transaction
     db.commit()
-    if session:
-        db.refresh(session)
-    if block:
-        db.refresh(block)
 
-    parent_tt = None
-    if block:
+    parent_tt = parent_timetable
+    if not parent_tt and block:
         parent_tt = (
             db.query(models.StudyTimetable)
             .filter(models.StudyTimetable.id == block.timetable_id)

@@ -163,9 +163,9 @@ def get_streak_report(
     setting = _get_or_create_user_settings(db, current_user)
     floor_target = setting.daily_floor_target or 2
 
-    # Query all verified sessions for user
+    # Query verified sessions with minimal column projection
     passed_sessions = (
-        db.query(models.FocusSession)
+        db.query(models.FocusSession.end_time, models.FocusSession.started_at, models.FocusSession.timetable_block_id)
         .filter(
             models.FocusSession.user_id == current_user,
             models.FocusSession.verification_status == "verified",
@@ -174,9 +174,8 @@ def get_streak_report(
     )
 
     # Query completed timetable blocks for user where actual_completed_at is set
-    # Execution truth takes precedence: filter/group by func.date(StudyTimetableBlock.actual_completed_at)
     completed_blocks = (
-        db.query(models.StudyTimetableBlock)
+        db.query(models.StudyTimetableBlock.id, models.StudyTimetableBlock.actual_completed_at)
         .join(models.StudyTimetable, models.StudyTimetableBlock.timetable_id == models.StudyTimetable.id)
         .filter(
             models.StudyTimetable.user_id == current_user,
@@ -213,17 +212,7 @@ def get_streak_report(
     today_str = now_date.strftime("%Y-%m-%d")
 
     # today_verified_blocks must count blocks completed today:
-    # SELECT count(*) FROM study_timetable_blocks WHERE status = 'COMPLETED' AND func.date(actual_completed_at) == CURRENT_DATE
-    today_tt_blocks = (
-        db.query(models.StudyTimetableBlock)
-        .join(models.StudyTimetable, models.StudyTimetableBlock.timetable_id == models.StudyTimetable.id)
-        .filter(
-            models.StudyTimetable.user_id == current_user,
-            models.StudyTimetableBlock.status == "COMPLETED",
-            func.date(models.StudyTimetableBlock.actual_completed_at) == now_date,
-        )
-        .count()
-    )
+    today_tt_blocks = len(blocks_by_date.get(today_str, set()))
 
     today_verified_blocks = max(today_tt_blocks, counts_by_date.get(today_str, 0))
     floor_met_today = today_verified_blocks >= floor_target
@@ -258,25 +247,21 @@ def get_streak_report(
             else:
                 break
 
-    if floor_met_today:
-        streak = max(1, streak)
-        setting.current_streak_days = max(1, setting.current_streak_days or 0, streak)
-    else:
-        setting.current_streak_days = streak
-
-    if setting.current_streak_days > (setting.longest_streak_days or 0):
-        setting.longest_streak_days = setting.current_streak_days
+    cur_streak = max(1, setting.current_streak_days or 0, streak) if floor_met_today else streak
+    setting.current_streak_days = cur_streak
+    if cur_streak > (setting.longest_streak_days or 0):
+        setting.longest_streak_days = cur_streak
+    long_streak = setting.longest_streak_days
     db.commit()
-    db.refresh(setting)
 
     active_dates = sorted(counts_by_date.keys(), reverse=True)
     last_active = active_dates[0] if active_dates else (today_str if today_verified_blocks > 0 else None)
 
-    status_label = "ACTIVE" if setting.current_streak_days > 0 else ("PENDING_TODAY" if today_verified_blocks > 0 else "AT_RISK")
+    status_label = "ACTIVE" if cur_streak > 0 else ("PENDING_TODAY" if today_verified_blocks > 0 else "AT_RISK")
 
     return schemas.StreakReport(
-        current_streak_days=setting.current_streak_days,
-        longest_streak_days=setting.longest_streak_days,
+        current_streak_days=cur_streak,
+        longest_streak_days=long_streak,
         daily_floor_target=floor_target,
         today_verified_blocks=today_verified_blocks,
         floor_met_today=floor_met_today,
@@ -322,30 +307,40 @@ def calculate_daily_scorecard(db: Session, user_id: str, target_date: date) -> d
     """
     D = target_date
 
-    # 1. Count timetable blocks where:
-    # StudyTimetableBlock.status == 'COMPLETED' AND func.date(StudyTimetableBlock.actual_completed_at) == target_date.
-    completed_tt_blocks = (
+    # 1. Count timetable blocks where status == 'COMPLETED' and actual_completed_at == D
+    all_completed_blocks = (
         db.query(models.StudyTimetableBlock)
         .join(models.StudyTimetable, models.StudyTimetableBlock.timetable_id == models.StudyTimetable.id)
         .filter(
             models.StudyTimetable.user_id == user_id,
             models.StudyTimetableBlock.status == "COMPLETED",
-            func.date(models.StudyTimetableBlock.actual_completed_at) == D,
         )
         .all()
     )
+    completed_tt_blocks = [
+        b for b in all_completed_blocks
+        if b.actual_completed_at and b.actual_completed_at.date() == D
+    ]
+
+    # Fetch all relevant sessions for user once
+    user_sessions = (
+        db.query(models.FocusSession)
+        .filter(models.FocusSession.user_id == user_id)
+        .all()
+    )
+    day_sessions = [
+        s for s in user_sessions
+        if (s.end_time and s.end_time.date() == D)
+        or (s.ended_at and s.ended_at.date() == D)
+        or (s.started_at and s.started_at.date() == D)
+    ]
 
     # 2. For verified_minutes: sum StudySession.duration_minutes where is_verified == True and func.date(StudySession.end_time) == target_date.
-    verified_sessions = (
-        db.query(models.FocusSession)
-        .filter(
-            models.FocusSession.user_id == user_id,
-            models.FocusSession.is_verified == True,
-            func.date(models.FocusSession.end_time) == D,
-        )
-        .all()
-    )
-    verified_minutes = sum(s.duration_minutes for s in verified_sessions)
+    verified_sessions = [
+        s for s in day_sessions
+        if s.is_verified and ((s.end_time and s.end_time.date() == D) or (s.ended_at and s.ended_at.date() == D))
+    ]
+    verified_minutes = sum(s.duration_minutes or 0 for s in verified_sessions)
 
     # Fallback: if a timetable block is marked 'COMPLETED' on target_date but no matching verified session was logged,
     # credit its actual elapsed time (actual_completed_at - actual_started_at) or fallback to duration_minutes.
@@ -366,16 +361,11 @@ def calculate_daily_scorecard(db: Session, user_id: str, target_date: date) -> d
 
     # Calculate completed_blocks:
     # Total completed blocks physically verified on date D (timetable blocks + standalone sessions)
-    all_completed_sessions_today = (
-        db.query(models.FocusSession)
-        .filter(
-            models.FocusSession.user_id == user_id,
-            models.FocusSession.ended_at.isnot(None),
-            func.date(models.FocusSession.end_time) == D,
-        )
-        .all()
-    )
     tt_block_ids = {b.id for b in completed_tt_blocks}
+    all_completed_sessions_today = [
+        s for s in day_sessions
+        if s.ended_at is not None and ((s.end_time and s.end_time.date() == D) or (s.ended_at and s.ended_at.date() == D))
+    ]
     standalone_completed_sessions = [
         s for s in all_completed_sessions_today
         if s.timetable_block_id not in tt_block_ids
@@ -385,14 +375,6 @@ def calculate_daily_scorecard(db: Session, user_id: str, target_date: date) -> d
     setting = db.query(models.UserSetting).filter(models.UserSetting.user_id == user_id).first()
     target_floor_minutes = setting.daily_target_minutes if (setting and setting.daily_target_minutes) else 180
 
-    day_sessions = (
-        db.query(models.FocusSession)
-        .filter(
-            models.FocusSession.user_id == user_id,
-            func.date(func.coalesce(models.FocusSession.ended_at, models.FocusSession.started_at)) == D,
-        )
-        .all()
-    )
     session_ids = {s.id for s in day_sessions}
 
     distraction_logs = (
