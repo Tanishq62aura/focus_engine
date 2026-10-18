@@ -2131,7 +2131,14 @@
         }
 
         // Dynamically sync HUD task dropdown when conversational tasks/categories change or timetables stage
-        if (res.action === 'MANAGE_TASK_CATEGORIES' || res.action === 'TIMETABLE_CARD' || res.action === 'TIMETABLE_RESCHEDULED') {
+        const modifiesTasksOrTimetables =
+          res.action === 'MANAGE_TASK_CATEGORIES' ||
+          res.action === 'TIMETABLE_CARD' ||
+          res.action === 'TIMETABLE_RESCHEDULED' ||
+          Boolean(res.data && (res.data.modified_tasks || res.data.categories || res.data.blocks)) ||
+          Boolean(res.tool_calls && res.tool_calls.some(tc => ['manage_task_categories', 'stage_window_timetable', 'reschedule_active_timetable'].includes(tc.name)));
+
+        if (modifiesTasksOrTimetables) {
           if (typeof loadTasks === 'function') {
             await loadTasks();
           }

@@ -222,3 +222,69 @@ def test_stage_window_timetable_creates_linked_tasks(client: TestClient, cleanup
     assert res.status_code == 200
     start_data = res.json()
     assert str(start_data.get("task_id")) == str(t1.id)
+
+
+def test_task_title_deduplication(client: TestClient, cleanup_database):
+    db = cleanup_database
+    from app.routers.support import cleanup_duplicate_user_tasks
+
+    # 1. Create task via execute_manage_task_categories
+    args1 = {
+        "action": "create",
+        "categories": [
+            {
+                "name": "Distributed Systems",
+                "target_minutes": 45,
+                "priority": "P1",
+            }
+        ],
+    }
+    res1 = execute_manage_task_categories(db, TEST_USER_ID, args1)
+    assert res1["action"] == "create"
+    assert res1["categories"][0]["status"] == "created"
+
+    # 2. Call create again with same title (different casing, new target_minutes & priority)
+    args2 = {
+        "action": "create",
+        "categories": [
+            {
+                "name": "distributed systems",
+                "target_minutes": 60,
+                "priority": "P2",
+            }
+        ],
+    }
+    res2 = execute_manage_task_categories(db, TEST_USER_ID, args2)
+    assert res2["action"] == "create"
+    assert res2["categories"][0]["status"] == "updated"
+
+    # Verify only ONE task row exists in DB and its attributes were updated
+    tasks = db.query(Task).filter(Task.user_id == TEST_USER_ID, Task.title.ilike("Distributed Systems")).all()
+    assert len(tasks) == 1
+    assert tasks[0].estimated_duration_min == 60
+    assert tasks[0].priority == 2
+    assert tasks[0].is_archived is False
+
+    # 3. Test cleanup_duplicate_user_tasks directly
+    dup_task = Task(
+        user_id=TEST_USER_ID,
+        title="Distributed Systems",
+        category="coding",
+        priority=3,
+        estimated_duration_min=30,
+        min_goal=15,
+        target_goal=30,
+        stretch_goal=45,
+        is_archived=False,
+    )
+    db.add(dup_task)
+    db.commit()
+
+    all_tasks_before = db.query(Task).filter(Task.user_id == TEST_USER_ID, Task.title.ilike("Distributed Systems")).all()
+    assert len(all_tasks_before) == 2
+
+    purged = cleanup_duplicate_user_tasks(db, TEST_USER_ID)
+    assert purged == 1
+
+    all_tasks_after = db.query(Task).filter(Task.user_id == TEST_USER_ID, Task.title.ilike("Distributed Systems")).all()
+    assert len(all_tasks_after) == 1

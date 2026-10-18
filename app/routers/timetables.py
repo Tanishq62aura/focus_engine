@@ -8,6 +8,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app import crud
@@ -66,7 +67,7 @@ def stage_timetable(
         block_dict = block_data.model_dump()
         task = (
             db.query(Task)
-            .filter(Task.user_id == user_id, Task.title == block_data.topic)
+            .filter(Task.user_id == user_id, func.lower(Task.title) == block_data.topic.lower())
             .first()
         )
         if not task:
@@ -82,6 +83,12 @@ def stage_timetable(
             )
             db.add(task)
             db.flush()
+        else:
+            if getattr(task, "is_archived", False):
+                task.is_archived = False
+                task.is_completed = False
+            task.estimated_duration_min = block_data.duration_minutes
+            task.target_goal = block_data.duration_minutes
 
         block_dict["task_id"] = task.id
         block = TimetableBlock(
@@ -294,7 +301,7 @@ def start_block_session(
     if not task:
         task = (
             db.query(Task)
-            .filter(Task.user_id == user_id, Task.title == block.topic)
+            .filter(Task.user_id == user_id, func.lower(Task.title) == block.topic.lower())
             .first()
         )
         if not task:
@@ -309,6 +316,10 @@ def start_block_session(
             )
             db.add(task)
             db.flush()
+        else:
+            if getattr(task, "is_archived", False):
+                task.is_archived = False
+                task.is_completed = False
         block.task_id = task.id
 
     session_id = None
