@@ -87,6 +87,12 @@ def init_db():
                     ALTER TABLE tasks ADD COLUMN IF NOT EXISTS is_archived BOOLEAN DEFAULT FALSE;
                     ALTER TABLE study_timetables ADD COLUMN IF NOT EXISTS audit_notes TEXT;
                     ALTER TABLE study_timetables ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP WITH TIME ZONE;
+                    ALTER TABLE focus_sessions ADD COLUMN IF NOT EXISTS status VARCHAR(32) DEFAULT 'IN_PROGRESS';
+                    ALTER TABLE focus_sessions ADD COLUMN IF NOT EXISTS created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW();
+                    ALTER TABLE focus_sessions ADD COLUMN IF NOT EXISTS last_heartbeat_at TIMESTAMP WITH TIME ZONE;
+                    ALTER TABLE focus_sessions ADD COLUMN IF NOT EXISTS heartbeat_violation_count INTEGER DEFAULT 0;
+                    ALTER TABLE focus_sessions ADD COLUMN IF NOT EXISTS drift_seconds INTEGER DEFAULT 0;
+                    ALTER TABLE focus_sessions ALTER COLUMN task_id DROP NOT NULL;
                 """))
                 conn.commit()
             except Exception:
@@ -104,11 +110,37 @@ def init_db():
                             conn.execute(text(f"ALTER TABLE {t} ADD COLUMN user_id VARCHAR(64) DEFAULT 'dev-user' NOT NULL"))
                         except Exception:
                             pass
-                    if t == "focus_sessions" and "timetable_block_id" not in cols:
-                        try:
-                            conn.execute(text("ALTER TABLE focus_sessions ADD COLUMN timetable_block_id INTEGER REFERENCES timetable_blocks(id)"))
-                        except Exception:
-                            pass
+                    if t == "focus_sessions":
+                        if "timetable_block_id" not in cols:
+                            try:
+                                conn.execute(text("ALTER TABLE focus_sessions ADD COLUMN timetable_block_id INTEGER REFERENCES timetable_blocks(id)"))
+                            except Exception:
+                                pass
+                        if "status" not in cols:
+                            try:
+                                conn.execute(text("ALTER TABLE focus_sessions ADD COLUMN status VARCHAR(32) DEFAULT 'IN_PROGRESS'"))
+                            except Exception:
+                                pass
+                        if "created_at" not in cols:
+                            try:
+                                conn.execute(text("ALTER TABLE focus_sessions ADD COLUMN created_at DATETIME"))
+                            except Exception:
+                                pass
+                        if "last_heartbeat_at" not in cols:
+                            try:
+                                conn.execute(text("ALTER TABLE focus_sessions ADD COLUMN last_heartbeat_at DATETIME"))
+                            except Exception:
+                                pass
+                        if "heartbeat_violation_count" not in cols:
+                            try:
+                                conn.execute(text("ALTER TABLE focus_sessions ADD COLUMN heartbeat_violation_count INTEGER DEFAULT 0"))
+                            except Exception:
+                                pass
+                        if "drift_seconds" not in cols:
+                            try:
+                                conn.execute(text("ALTER TABLE focus_sessions ADD COLUMN drift_seconds INTEGER DEFAULT 0"))
+                            except Exception:
+                                pass
                     if t == "tasks" and "is_archived" not in cols:
                         try:
                             conn.execute(text("ALTER TABLE tasks ADD COLUMN is_archived BOOLEAN DEFAULT 0"))

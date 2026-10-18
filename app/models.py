@@ -95,7 +95,7 @@ class FocusSession(Base):
 
     id = Column(String(36), primary_key=True, default=_new_uuid)
     user_id = Column(String(64), nullable=False, index=True, default="dev-user")
-    task_id = Column(String(36), ForeignKey("tasks.id", ondelete="CASCADE"), nullable=False)
+    task_id = Column(String(36), ForeignKey("tasks.id", ondelete="CASCADE"), nullable=True)
     schedule_id = Column(String(36), ForeignKey("schedules.id", ondelete="SET NULL"), nullable=True)
     timetable_block_id = Column(Integer, ForeignKey("timetable_blocks.id", ondelete="SET NULL"), nullable=True)
     is_five_min_intervention = Column(Boolean, nullable=False, default=False)
@@ -124,6 +124,11 @@ class FocusSession(Base):
     viva_answer = Column(Text, nullable=True)
     viva_feedback = Column(Text, nullable=True)
     notes = Column(Text, nullable=True)
+    _status = Column("status", String(32), nullable=True, default="IN_PROGRESS")
+    created_at = Column(DateTime(timezone=True), nullable=True, default=_utcnow)
+    last_heartbeat_at = Column(DateTime, nullable=True)
+    heartbeat_violation_count = Column(Integer, default=0, nullable=False)
+    drift_seconds = Column(Integer, default=0, nullable=False)
 
     task = relationship("Task", back_populates="sessions")
     schedule = relationship("Schedule", back_populates="sessions")
@@ -132,6 +137,9 @@ class FocusSession(Base):
     )
     parked_thoughts = relationship(
         "ParkedThought", back_populates="session", cascade="all, delete"
+    )
+    heartbeats = relationship(
+        "SessionHeartbeat", back_populates="session", cascade="all, delete-orphan"
     )
 
     @hybrid_property
@@ -172,12 +180,15 @@ class FocusSession(Base):
 
     @hybrid_property
     def status(self):
+        if self._status:
+            return self._status
         if self.ended_at is not None:
             return "COMPLETED"
         return "IN_PROGRESS"
 
     @status.setter
     def status(self, val: str):
+        self._status = val
         if val == "COMPLETED" and not self.ended_at:
             self.ended_at = _utcnow()
         elif val in ("IN_PROGRESS", "ACTIVE") and not self.started_at:
@@ -185,9 +196,12 @@ class FocusSession(Base):
 
     @status.expression
     def status(cls):
-        return case(
-            (cls.ended_at.isnot(None), "COMPLETED"),
-            else_="IN_PROGRESS",
+        return func.coalesce(
+            cls._status,
+            case(
+                (cls.ended_at.isnot(None), "COMPLETED"),
+                else_="IN_PROGRESS",
+            ),
         )
 
     @hybrid_property
@@ -390,5 +404,20 @@ StudyTimetableModel = StudyTimetable
 StudySession = FocusSession
 
 
+class SessionHeartbeat(Base):
+    __tablename__ = "session_heartbeats"
 
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    session_id = Column(
+        String(36),
+        ForeignKey("focus_sessions.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    source = Column(String(20), nullable=False)  # "vscode" | "chrome"
+    event_type = Column(String(50), nullable=False)  # "keystroke", "tab_active", "focus_lost"
+    timestamp = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
+    is_on_task = Column(Boolean, default=True, nullable=False)
+    metadata_payload = Column(JSON, nullable=True)
 
+    session = relationship("FocusSession", back_populates="heartbeats")

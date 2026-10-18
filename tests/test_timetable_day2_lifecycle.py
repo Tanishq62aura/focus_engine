@@ -93,6 +93,20 @@ def ensure_day2_preconditions(db, client=None):
     if not target_session.started_at:
         target_session.started_at = now_utc - timedelta(minutes=45)
 
+    # Clean up any stale active sessions for dev-user to ensure clean isolation
+    stale_sessions = (
+        db.query(FocusSession)
+        .filter(
+            FocusSession.user_id == TARGET_USER_ID,
+            FocusSession.id != TARGET_SESSION_ID,
+            FocusSession.ended_at.is_(None),
+        )
+        .all()
+    )
+    for s in stale_sessions:
+        s.ended_at = now_utc
+        s.status = "COMPLETED"
+
     db.commit()
     return active_tt, day2_block, target_session
 

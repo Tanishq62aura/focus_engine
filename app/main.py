@@ -19,7 +19,7 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app import crud, mobile_bridge, models, schemas
-from app.routers import auth, reports, sessions, settings, support, timetables
+from app.routers import auth, reports, sessions, settings, support, telemetry, timetables
 from app.auth import (
     AUTH_DISABLED,
     DEV_USER_ID,
@@ -174,6 +174,7 @@ app.include_router(sessions.router, prefix="/api", tags=["sessions"])
 app.include_router(sessions.router, tags=["sessions"])
 app.include_router(timetables.router, prefix="/api/timetables", tags=["timetables"])
 app.include_router(timetables.router, prefix="/api", tags=["timetables"])
+app.include_router(telemetry.router)
 
 
 # ---------------------------------------------------------------------------
