@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import logging
 from datetime import date, datetime, timedelta, timezone
-from typing import Any, Optional
+from typing import Any, Optional, Union
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import func
@@ -209,13 +209,29 @@ def get_streak_report(
                 continue
             counts_by_date[ds] = counts_by_date.get(ds, 0) + 1
 
-    today_count = counts_by_date.get(today_str, 0)
-    floor_met_today = today_count >= floor_target
+    now_date = datetime.utcnow().date()
+    today_str = now_date.strftime("%Y-%m-%d")
+
+    # today_verified_blocks must count blocks completed today:
+    # SELECT count(*) FROM study_timetable_blocks WHERE status = 'COMPLETED' AND func.date(actual_completed_at) == CURRENT_DATE
+    today_tt_blocks = (
+        db.query(models.StudyTimetableBlock)
+        .join(models.StudyTimetable, models.StudyTimetableBlock.timetable_id == models.StudyTimetable.id)
+        .filter(
+            models.StudyTimetable.user_id == current_user,
+            models.StudyTimetableBlock.status == "COMPLETED",
+            func.date(models.StudyTimetableBlock.actual_completed_at) == now_date,
+        )
+        .count()
+    )
+
+    today_verified_blocks = max(today_tt_blocks, counts_by_date.get(today_str, 0))
+    floor_met_today = today_verified_blocks >= floor_target
 
     # Calculate consecutive qualified days
     streak = 0
     # Start checking from today (if met) or yesterday
-    check_date = now.date() if floor_met_today else (now - timedelta(days=1)).date()
+    check_date = now_date if floor_met_today else (now_date - timedelta(days=1))
 
     # Check if yesterday met the floor if today hasn't met it yet
     if not floor_met_today:
@@ -242,23 +258,27 @@ def get_streak_report(
             else:
                 break
 
-    # Update database
-    setting.current_streak_days = streak
-    if streak > (setting.longest_streak_days or 0):
-        setting.longest_streak_days = streak
+    if floor_met_today:
+        streak = max(1, streak)
+        setting.current_streak_days = max(1, setting.current_streak_days or 0, streak)
+    else:
+        setting.current_streak_days = streak
+
+    if setting.current_streak_days > (setting.longest_streak_days or 0):
+        setting.longest_streak_days = setting.current_streak_days
     db.commit()
     db.refresh(setting)
 
     active_dates = sorted(counts_by_date.keys(), reverse=True)
-    last_active = active_dates[0] if active_dates else None
+    last_active = active_dates[0] if active_dates else (today_str if today_verified_blocks > 0 else None)
 
-    status_label = "ACTIVE" if streak > 0 else ("PENDING_TODAY" if today_count > 0 else "AT_RISK")
+    status_label = "ACTIVE" if setting.current_streak_days > 0 else ("PENDING_TODAY" if today_verified_blocks > 0 else "AT_RISK")
 
     return schemas.StreakReport(
         current_streak_days=setting.current_streak_days,
         longest_streak_days=setting.longest_streak_days,
         daily_floor_target=floor_target,
-        today_verified_blocks=today_count,
+        today_verified_blocks=today_verified_blocks,
         floor_met_today=floor_met_today,
         last_active_date=last_active,
         status=status_label,
@@ -302,8 +322,8 @@ def calculate_daily_scorecard(db: Session, user_id: str, target_date: date) -> d
     """
     D = target_date
 
-    # 1. Completed timetable blocks for target date D:
-    # Filter by func.date(StudyTimetableBlock.actual_completed_at) == D, NOT StudyTimetableBlock.target_date == D.
+    # 1. Count timetable blocks where:
+    # StudyTimetableBlock.status == 'COMPLETED' AND func.date(StudyTimetableBlock.actual_completed_at) == target_date.
     completed_tt_blocks = (
         db.query(models.StudyTimetableBlock)
         .join(models.StudyTimetable, models.StudyTimetableBlock.timetable_id == models.StudyTimetable.id)
@@ -315,8 +335,7 @@ def calculate_daily_scorecard(db: Session, user_id: str, target_date: date) -> d
         .all()
     )
 
-    # 2. Verified sessions for date D:
-    # StudySession.duration_minutes where is_verified == True and func.date(StudySession.end_time) == D
+    # 2. For verified_minutes: sum StudySession.duration_minutes where is_verified == True and func.date(StudySession.end_time) == target_date.
     verified_sessions = (
         db.query(models.FocusSession)
         .filter(
@@ -326,24 +345,24 @@ def calculate_daily_scorecard(db: Session, user_id: str, target_date: date) -> d
         )
         .all()
     )
+    verified_minutes = sum(s.duration_minutes for s in verified_sessions)
 
-    # Calculate verified_minutes by summing both:
-    # a) StudySession.duration_minutes where is_verified == True and func.date(StudySession.end_time) == D.
-    session_minutes = sum(s.duration_minutes for s in verified_sessions)
-
-    # b) Blocks completed on date D where actual duration was logged.
+    # Fallback: if a timetable block is marked 'COMPLETED' on target_date but no matching verified session was logged,
+    # credit its actual elapsed time (actual_completed_at - actual_started_at) or fallback to duration_minutes.
     session_block_ids = {s.timetable_block_id for s in verified_sessions if s.timetable_block_id}
-    unlinked_block_minutes = 0
-    for b in completed_tt_blocks:
-        if b.id not in session_block_ids:
-            if b.actual_completed_at and b.actual_started_at:
-                st = b.actual_started_at.replace(tzinfo=timezone.utc) if b.actual_started_at.tzinfo is None else b.actual_started_at
-                et = b.actual_completed_at.replace(tzinfo=timezone.utc) if b.actual_completed_at.tzinfo is None else b.actual_completed_at
-                unlinked_block_minutes += max(1, int((et - st).total_seconds() / 60))
-            elif b.duration_minutes:
-                unlinked_block_minutes += b.duration_minutes
+    session_task_ids = {s.task_id for s in verified_sessions if s.task_id}
 
-    total_verified_minutes = float(round(session_minutes + unlinked_block_minutes, 1))
+    for block in completed_tt_blocks:
+        if block.id not in session_block_ids and (not block.task_id or block.task_id not in session_task_ids):
+            if block.actual_completed_at and block.actual_started_at:
+                st = block.actual_started_at.replace(tzinfo=timezone.utc) if block.actual_started_at.tzinfo is None else block.actual_started_at
+                et = block.actual_completed_at.replace(tzinfo=timezone.utc) if block.actual_completed_at.tzinfo is None else block.actual_completed_at
+                elapsed = max(1, int((et - st).total_seconds() / 60))
+                verified_minutes += elapsed
+            elif block.duration_minutes:
+                verified_minutes += block.duration_minutes
+
+    total_verified_minutes = float(round(verified_minutes, 1))
 
     # Calculate completed_blocks:
     # Total completed blocks physically verified on date D (timetable blocks + standalone sessions)
@@ -425,23 +444,26 @@ def calculate_daily_scorecard(db: Session, user_id: str, target_date: date) -> d
 
 @router.get("/daily-scorecard", response_model=schemas.DailyScorecardResponse)
 def get_daily_scorecard(
-    date_str: Optional[str] = Query(None, alias="date"),
+    date: Optional[Union[date, str]] = Query(None),
     db: Session = Depends(get_db),
     current_user: str = Depends(get_current_user),
 ):
     """
     Returns the Daily Execution Scorecard for current user on the given date (default today).
     """
-    if date_str:
-        if date_str.lower() in ("today", "now"):
-            target_date = datetime.now(timezone.utc).date()
+    if date:
+        if isinstance(date, str):
+            if date.lower() in ("today", "now"):
+                target_date = datetime.utcnow().date()
+            else:
+                try:
+                    target_date = datetime.strptime(date, "%Y-%m-%d").date()
+                except ValueError:
+                    raise HTTPException(status_code=400, detail="Invalid date format. Expected YYYY-MM-DD.")
         else:
-            try:
-                target_date = datetime.strptime(date_str, "%Y-%m-%d").date()
-            except ValueError:
-                raise HTTPException(status_code=400, detail="Invalid date format. Expected YYYY-MM-DD.")
+            target_date = date
     else:
-        target_date = datetime.now(timezone.utc).date()
+        target_date = datetime.utcnow().date()
 
     scorecard = calculate_daily_scorecard(db, current_user, target_date)
     return schemas.DailyScorecardResponse(**scorecard)

@@ -383,6 +383,11 @@ def complete_block_endpoint(
     if not block:
         raise HTTPException(status_code=404, detail="Block not found")
 
+    now_utc = datetime.utcnow()
+    block.status = "COMPLETED"
+    block.actual_completed_at = now_utc
+
+    # Query active StudySession for current_user where status in ['IN_PROGRESS', 'ACTIVE']
     session = None
     req_session_id = payload.session_id if payload else None
     if req_session_id:
@@ -397,7 +402,7 @@ def complete_block_endpoint(
             .filter(
                 FocusSession.user_id == user_id,
                 FocusSession.timetable_block_id == block.id,
-                FocusSession.status == "IN_PROGRESS",
+                FocusSession.status.in_(["IN_PROGRESS", "ACTIVE"]),
             )
             .first()
         )
@@ -407,14 +412,23 @@ def complete_block_endpoint(
             .filter(
                 FocusSession.user_id == user_id,
                 FocusSession.task_id == block.task_id,
-                FocusSession.status == "IN_PROGRESS",
+                FocusSession.status.in_(["IN_PROGRESS", "ACTIVE"]),
             )
+            .first()
+        )
+    if not session:
+        session = (
+            db.query(FocusSession)
+            .filter(
+                FocusSession.user_id == user_id,
+                FocusSession.status.in_(["IN_PROGRESS", "ACTIVE"]),
+            )
+            .order_by(FocusSession.started_at.desc())
             .first()
         )
     if not session:
         session = crud.get_active_session(db, user_id=user_id)
 
-    now_utc = datetime.now(timezone.utc)
     if session:
         session.is_verified = True
         session.status = "COMPLETED"
@@ -422,13 +436,14 @@ def complete_block_endpoint(
         if not session.start_time:
             session.start_time = now_utc - timedelta(minutes=1)
         st = session.start_time
-        if st.tzinfo is None:
+        et = session.end_time
+        if st.tzinfo is None and et.tzinfo is not None:
             st = st.replace(tzinfo=timezone.utc)
-        session.duration_minutes = max(1, int((now_utc - st).total_seconds() / 60))
+        elif st.tzinfo is not None and et.tzinfo is None:
+            et = et.replace(tzinfo=timezone.utc)
+        session.duration_minutes = max(1, int((et - st).total_seconds() / 60))
+        session.verified_minutes = session.duration_minutes
         session.timetable_block_id = block.id
-
-    block.status = "COMPLETED"
-    block.actual_completed_at = now_utc
 
     timetable = (
         db.query(StudyTimetable)

@@ -174,23 +174,20 @@ class FocusSession(Base):
     def status(self):
         if self.ended_at is not None:
             return "COMPLETED"
-        if self.started_at is not None:
-            return "IN_PROGRESS"
-        return "PENDING"
+        return "IN_PROGRESS"
 
     @status.setter
     def status(self, val: str):
         if val == "COMPLETED" and not self.ended_at:
             self.ended_at = _utcnow()
-        elif val == "IN_PROGRESS" and not self.started_at:
+        elif val in ("IN_PROGRESS", "ACTIVE") and not self.started_at:
             self.started_at = _utcnow()
 
     @status.expression
     def status(cls):
         return case(
             (cls.ended_at.isnot(None), "COMPLETED"),
-            (cls.started_at.isnot(None), "IN_PROGRESS"),
-            else_="PENDING",
+            else_="IN_PROGRESS",
         )
 
     @hybrid_property
@@ -210,6 +207,14 @@ class FocusSession(Base):
     @duration_minutes.setter
     def duration_minutes(self, val: int):
         self.actual_focused_seconds = max(0, int(val * 60))
+
+    @hybrid_property
+    def verified_minutes(self):
+        return self.duration_minutes
+
+    @verified_minutes.setter
+    def verified_minutes(self, val: int):
+        self.duration_minutes = val
 
 
 # ---------------------------------------------------------------------------

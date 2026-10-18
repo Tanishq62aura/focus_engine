@@ -1595,21 +1595,8 @@ def verify_viva_defense(
         else:
             passed = bool(ans and len(ans.strip()) >= 3)
 
-    now_utc = datetime.now(timezone.utc)
+    now_utc = datetime.utcnow()
     if passed:
-        if session:
-            session.is_verified = True
-            session.status = "COMPLETED"
-            session.end_time = now_utc
-            if not session.start_time:
-                session.start_time = now_utc - timedelta(minutes=1)
-            st = session.start_time
-            if st.tzinfo is None:
-                st = st.replace(tzinfo=timezone.utc)
-            session.duration_minutes = max(1, int((now_utc - st).total_seconds() / 60))
-            if block:
-                session.timetable_block_id = block.id
-
         if block:
             block.status = "COMPLETED"
             block.actual_completed_at = now_utc
@@ -1630,6 +1617,57 @@ def verify_viva_defense(
                 )
                 if remaining == 0:
                     parent_timetable.status = "COMPLETED"
+
+        # Query active StudySession for current_user where status in ['IN_PROGRESS', 'ACTIVE']
+        if not session and block:
+            session = (
+                db.query(FocusSession)
+                .filter(
+                    FocusSession.user_id == user_id,
+                    FocusSession.timetable_block_id == block.id,
+                    FocusSession.status.in_(["IN_PROGRESS", "ACTIVE"]),
+                )
+                .first()
+            )
+            if not session and block.task_id:
+                session = (
+                    db.query(FocusSession)
+                    .filter(
+                        FocusSession.user_id == user_id,
+                        FocusSession.task_id == block.task_id,
+                        FocusSession.status.in_(["IN_PROGRESS", "ACTIVE"]),
+                    )
+                    .first()
+                )
+        if not session:
+            session = (
+                db.query(FocusSession)
+                .filter(
+                    FocusSession.user_id == user_id,
+                    FocusSession.status.in_(["IN_PROGRESS", "ACTIVE"]),
+                )
+                .order_by(FocusSession.started_at.desc())
+                .first()
+            )
+        if not session:
+            session = crud.get_active_session(db, user_id=user_id)
+
+        if session:
+            session.is_verified = True
+            session.status = "COMPLETED"
+            session.end_time = now_utc
+            if not session.start_time:
+                session.start_time = now_utc - timedelta(minutes=1)
+            st = session.start_time
+            et = session.end_time
+            if st.tzinfo is None and et.tzinfo is not None:
+                st = st.replace(tzinfo=timezone.utc)
+            elif st.tzinfo is not None and et.tzinfo is None:
+                et = et.replace(tzinfo=timezone.utc)
+            session.duration_minutes = max(1, int((et - st).total_seconds() / 60))
+            session.verified_minutes = session.duration_minutes
+            if block:
+                session.timetable_block_id = block.id
     else:
         if session:
             session.verification_status = "rejected"

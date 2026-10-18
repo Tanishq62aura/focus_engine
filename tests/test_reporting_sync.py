@@ -197,6 +197,7 @@ def test_atomic_session_to_block_viva_sync(client: TestClient, cleanup_database)
     assert sess.ended_at is not None
     assert sess.end_time is not None
     assert sess.duration_minutes >= 1
+    assert sess.verified_minutes == sess.duration_minutes
 
     assert blk.status == "COMPLETED"
     assert blk.actual_completed_at is not None
@@ -246,3 +247,119 @@ def test_block_complete_endpoint_atomic_sync(client: TestClient, cleanup_databas
     sc_res = client.get("/api/reports/daily-scorecard?date=today")
     assert sc_res.status_code == 200
     assert sc_res.json()["completed_blocks"] == 1
+
+
+def test_unlinked_completed_block_fallback_duration(client: TestClient, cleanup_database):
+    """
+    Verify fallback: if a timetable block is marked 'COMPLETED' on target_date but no matching
+    verified session was logged, credit its elapsed time or duration_minutes.
+    """
+    today = date.today()
+    stage_res = client.post(
+        "/api/timetables/stage",
+        json={
+            "title": "Unlinked Fallback Block Test",
+            "track_id": "coding",
+            "total_days": 1,
+            "blocks": [
+                {
+                    "day_number": 1,
+                    "target_date": today.isoformat(),
+                    "window_start": "08:00:00",
+                    "window_deadline": "11:00:00",
+                    "duration_minutes": 75,
+                    "topic": "Unlinked Fallback Duration Block",
+                    "deliverable_spec": "Direct complete test",
+                    "verification_rules": "Credit fallback duration",
+                }
+            ],
+        },
+    )
+    assert stage_res.status_code == 201
+    block_id = stage_res.json()["blocks"][0]["id"]
+
+    # Mark block as COMPLETED directly in DB with actual_completed_at = now and no matching session
+    blk = cleanup_database.query(TimetableBlock).filter(TimetableBlock.id == block_id).first()
+    blk.status = "COMPLETED"
+    blk.actual_completed_at = datetime.utcnow()
+    cleanup_database.commit()
+
+    scorecard_res = client.get("/api/reports/daily-scorecard?date=today")
+    assert scorecard_res.status_code == 200
+    sc = scorecard_res.json()
+    assert sc["completed_blocks"] == 1
+    assert sc["verified_minutes"] == 75.0
+
+
+def test_streak_calculation_today_completed_blocks(client: TestClient, cleanup_database):
+    """
+    Verify streak calculation:
+    - today_verified_blocks counts blocks completed today
+    - If today_verified_blocks >= daily_floor_target, floor_met_today is True and current_streak_days >= 1
+    """
+    today = date.today()
+    stage_res = client.post(
+        "/api/timetables/stage",
+        json={
+            "title": "Streak Target Floor Test",
+            "track_id": "coding",
+            "total_days": 2,
+            "blocks": [
+                {
+                    "day_number": 1,
+                    "target_date": today.isoformat(),
+                    "window_start": "08:00:00",
+                    "window_deadline": "11:00:00",
+                    "duration_minutes": 30,
+                    "topic": "Streak Test Block 1",
+                    "deliverable_spec": "spec 1",
+                    "verification_rules": "viva 1",
+                },
+                {
+                    "day_number": 2,
+                    "target_date": (today + timedelta(days=1)).isoformat(),
+                    "window_start": "12:00:00",
+                    "window_deadline": "15:00:00",
+                    "duration_minutes": 30,
+                    "topic": "Streak Test Block 2",
+                    "deliverable_spec": "spec 2",
+                    "verification_rules": "viva 2",
+                },
+            ],
+        },
+    )
+    assert stage_res.status_code == 201
+    b1_id = stage_res.json()["blocks"][0]["id"]
+    b2_id = stage_res.json()["blocks"][1]["id"]
+
+    # Set daily floor target to 2
+    setting = cleanup_database.query(UserSetting).filter(UserSetting.user_id == TEST_USER_ID).first()
+    if not setting:
+        setting = UserSetting(user_id=TEST_USER_ID, daily_floor_target=2, current_streak_days=0)
+        cleanup_database.add(setting)
+    else:
+        setting.daily_floor_target = 2
+        setting.current_streak_days = 0
+    cleanup_database.commit()
+
+    # Complete block 1 today
+    client.post(f"/api/timetables/blocks/{b1_id}/start")
+    client.post("/api/support/verify-viva", json={"timetable_block_id": b1_id, "passed": True})
+
+    streak_res1 = client.get("/api/reports/streak")
+    assert streak_res1.status_code == 200
+    st1 = streak_res1.json()
+    assert st1["today_verified_blocks"] == 1
+    assert st1["floor_met_today"] is False
+
+    # Complete block 2 today (ahead of schedule)
+    client.post(f"/api/timetables/blocks/{b2_id}/start")
+    client.post("/api/support/verify-viva", json={"timetable_block_id": b2_id, "passed": True})
+
+    streak_res2 = client.get("/api/reports/streak")
+    assert streak_res2.status_code == 200
+    st2 = streak_res2.json()
+    assert st2["today_verified_blocks"] >= 2
+    assert st2["floor_met_today"] is True
+    assert st2["current_streak_days"] >= 1
+
