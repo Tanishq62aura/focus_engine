@@ -575,6 +575,7 @@ class StudyTimetableResponse(BaseModel):
     status: str
     audit_notes: Optional[str] = None
     created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
     blocks: List[TimetableBlockResponse] = []
     active_target_block: Optional[TimetableBlockResponse] = None
     target_block: Optional[TimetableBlockResponse] = None
@@ -596,6 +597,20 @@ class BlockStartResponse(BaseModel):
     early_start: bool = False
     late_start: bool = False
     message: str
+
+
+class BlockRescheduleItem(BaseModel):
+    day_index: Optional[int] = None
+    block_id: Optional[int] = None
+    new_target_date: Optional[date] = None
+    new_window_start: Optional[time] = None
+    new_window_deadline: Optional[time] = None
+
+
+class TimetableReschedulePayload(BaseModel):
+    shift_days: Optional[int] = 0
+    block_adjustments: Optional[List[BlockRescheduleItem]] = []
+    reason: Optional[str] = "User requested adjustment"
 
 
 

@@ -84,6 +84,7 @@ def init_db():
                     ALTER TABLE focus_sessions ADD COLUMN IF NOT EXISTS timetable_block_id INTEGER REFERENCES timetable_blocks(id) ON DELETE SET NULL;
                     ALTER TABLE timetable_blocks ADD COLUMN IF NOT EXISTS resources JSONB DEFAULT '[]'::jsonb;
                     ALTER TABLE study_timetables ADD COLUMN IF NOT EXISTS audit_notes TEXT;
+                    ALTER TABLE study_timetables ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP WITH TIME ZONE;
                 """))
                 conn.commit()
             except Exception:
@@ -118,6 +119,11 @@ def init_db():
                 if "audit_notes" not in st_cols:
                     try:
                         conn.execute(text("ALTER TABLE study_timetables ADD COLUMN audit_notes TEXT"))
+                    except Exception:
+                        pass
+                if "updated_at" not in st_cols:
+                    try:
+                        conn.execute(text("ALTER TABLE study_timetables ADD COLUMN updated_at DATETIME"))
                     except Exception:
                         pass
             if inspector.has_table("user_settings"):

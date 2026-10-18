@@ -4,7 +4,7 @@ Router Implementation: Moderate Window-Anchored Study Timetable & Scheduling sub
 Handles authorization, window checks, state transitions, and session startup.
 """
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -14,7 +14,13 @@ from app import crud
 from app.database import get_db
 from app.models import FocusSession, StudyTimetable, Task, TimetableBlock
 from app.routers.auth import get_current_user
-from app.schemas import StudyTimetableCreate, StudyTimetableResponse, TimetableBlockResponse
+from app.schemas import (
+    BlockRescheduleItem,
+    StudyTimetableCreate,
+    StudyTimetableResponse,
+    TimetableBlockResponse,
+    TimetableReschedulePayload,
+)
 
 logger = logging.getLogger("focus_engine.timetables")
 
@@ -91,6 +97,81 @@ def get_active_timetable(
     timetable.target_block = target
 
     return timetable
+
+
+def apply_timetable_reschedule(
+    db: Session,
+    timetable: StudyTimetable,
+    payload: TimetableReschedulePayload,
+) -> StudyTimetable:
+    mutable_blocks = [b for b in timetable.blocks if b.status in ("PENDING", "IN_PROGRESS")]
+
+    # 1. Apply day shift to mutable blocks
+    if payload.shift_days:
+        for b in mutable_blocks:
+            b.target_date = b.target_date + timedelta(days=payload.shift_days)
+
+    # 2. Apply explicit block adjustments
+    for adj in (payload.block_adjustments or []):
+        target_b = None
+        for b in mutable_blocks:
+            if adj.block_id is not None and b.id == adj.block_id:
+                target_b = b
+                break
+            if adj.day_index is not None and (b.day_number == adj.day_index or (adj.day_index == 0 and b.day_number == 1)):
+                target_b = b
+                break
+
+        if target_b:
+            if adj.new_target_date is not None:
+                target_b.target_date = adj.new_target_date
+
+            eff_start = adj.new_window_start if adj.new_window_start is not None else target_b.window_start
+            eff_deadline = adj.new_window_deadline if adj.new_window_deadline is not None else target_b.window_deadline
+
+            if eff_start >= eff_deadline:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Invalid time window for Day {target_b.day_number}: window_start ({eff_start}) must be earlier than window_deadline ({eff_deadline}).",
+                )
+
+            if adj.new_window_start is not None:
+                target_b.window_start = adj.new_window_start
+            if adj.new_window_deadline is not None:
+                target_b.window_deadline = adj.new_window_deadline
+
+    timetable.updated_at = datetime.now(timezone.utc)
+    db.commit()
+    db.refresh(timetable)
+
+    target = next((b for b in timetable.blocks if b.status != "COMPLETED"), None)
+    timetable.active_target_block = target
+    timetable.target_block = target
+    return timetable
+
+
+@router.patch("/active/reschedule", response_model=StudyTimetableResponse)
+def reschedule_active_timetable_endpoint(
+    payload: TimetableReschedulePayload,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    user_id = _get_user_id(current_user)
+    timetable = (
+        db.query(StudyTimetable)
+        .filter(
+            StudyTimetable.user_id == user_id,
+            StudyTimetable.status == "ACTIVE",
+        )
+        .first()
+    )
+    if not timetable:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No active study timetable found",
+        )
+
+    return apply_timetable_reschedule(db, timetable, payload)
 
 
 @router.post("/blocks/{block_id}/start")

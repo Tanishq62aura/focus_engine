@@ -2065,6 +2065,22 @@
     window.toggleSupportDrawer = toggleSupportDrawer;
     window.toggleSupportChat = toggleSupportDrawer;
 
+    function openSupportChatWithPrompt(promptText) {
+      const el = document.getElementById('drawer-support-chat');
+      if (el && el.classList.contains('hidden')) {
+        el.classList.remove('hidden');
+      }
+      const input = document.getElementById('support-input');
+      if (input) {
+        input.value = promptText;
+        input.focus();
+        if (typeof input.setSelectionRange === 'function') {
+          input.setSelectionRange(input.value.length, input.value.length);
+        }
+      }
+    }
+    window.openSupportChatWithPrompt = openSupportChatWithPrompt;
+
     function sendQuickPrompt(promptText) {
       const input = document.getElementById('support-input');
       if (input) {
@@ -2114,9 +2130,16 @@
         }
 
         // Check for Interactive Timetable Card Flow
-        const timetablePayload = res.timetable || (res.action === 'TIMETABLE_CARD' ? res.data : null) || res.data?.timetable;
+        const isRescheduled = res.action === 'TIMETABLE_RESCHEDULED' || Boolean(res.data && res.data.is_rescheduled);
+        const timetablePayload = res.timetable || (res.action === 'TIMETABLE_CARD' || res.action === 'TIMETABLE_RESCHEDULED' ? res.data : null) || res.data?.timetable;
         if (timetablePayload && (timetablePayload.blocks || timetablePayload.title)) {
+          if (isRescheduled) {
+            timetablePayload.is_rescheduled = true;
+          }
           renderTimetableChatCard(botBubble, timetablePayload);
+          if (isRescheduled && typeof loadActiveTimetableHUD === 'function') {
+            loadActiveTimetableHUD();
+          }
         }
       } catch (err) {
         // Render validation and execution rejections cleanly inside the chat bubble without generic toasts
@@ -2269,6 +2292,10 @@
       const totalDays = timetable.total_days || blocks.length || 7;
       const title = timetable.title || 'Study Timetable';
       const auditNotes = timetable.audit_notes || data.audit_notes;
+      const isRescheduled = Boolean(data.is_rescheduled || timetable.is_rescheduled || data.action === 'TIMETABLE_RESCHEDULED');
+      const rescheduledBadge = isRescheduled
+        ? `<span class="px-1.5 py-0.5 rounded text-[10px] font-mono bg-amber-500/10 text-amber-400 border border-amber-500/30 flex-shrink-0 flex items-center gap-1 font-semibold"><span>↻</span> Rescheduled</span>`
+        : '';
 
       const card = document.createElement('div');
       card.className = 'mt-3 p-3 bg-zinc-900/90 border border-zinc-800 rounded-lg shadow-inner font-mono text-xs space-y-2';
@@ -2300,7 +2327,10 @@
 
       card.innerHTML = `
         <div class="flex items-center justify-between gap-2 border-b border-zinc-800 pb-2 mb-2">
-          <span class="font-bold text-zinc-100 font-sans text-xs truncate" title="${escapeHtml(title)}">${escapeHtml(title)}</span>
+          <div class="flex items-center gap-1.5 truncate">
+            <span class="font-bold text-zinc-100 font-sans text-xs truncate" title="${escapeHtml(title)}">${escapeHtml(title)}</span>
+            ${rescheduledBadge}
+          </div>
           <span class="px-2 py-0.5 rounded text-[10px] font-mono bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 flex-shrink-0">
             ${totalDays} Days
           </span>
@@ -2447,6 +2477,10 @@
               <span>Time Range: ${escapeHtml(startStr)} - ${escapeHtml(deadlineStr)} (${escapeHtml(targetDate)})</span>
               <span>•</span>
               <span>${b.duration_minutes}m target</span>
+              <span>•</span>
+              <button type="button" onclick="openSupportChatWithPrompt('I need to adjust the time window for my current timetable: ')" class="text-amber-400 hover:text-amber-300 font-mono text-[11px] underline cursor-pointer" title="Adjust or shift timetable window via AI coach">
+                [Reschedule]
+              </button>
             </div>
             ${b.deliverable_spec ? `<div class="text-[11px] text-zinc-400 font-sans italic leading-relaxed">Deliverable: ${escapeHtml(b.deliverable_spec)}</div>` : ''}
             ${formatResourceBadges(b.resources)}

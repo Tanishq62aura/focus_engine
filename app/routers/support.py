@@ -18,7 +18,7 @@ from sqlalchemy.orm import Session
 from app import crud, models
 from app.auth import get_current_user
 from app.database import get_db
-from app.models import FocusSession
+from app.models import FocusSession, StudyTimetable, TimetableBlock
 from app.schemas import CategoryApprovalRequest, SupportChatRequest, SupportChatResponse
 
 logger = logging.getLogger(__name__)
@@ -107,6 +107,11 @@ System Architecture Knowledge:
      * Flag if any daily block exceeds 240 minutes.
      * Flag if window deadlines fall in high-fatigue circadian zones (00:00-05:00, 13:00-15:30).
      * Include an `audit_notes` field in the response summarizing feasibility, potential bottlenecks, and adjustments made.
+
+4. In-Flight Study Timetable Rescheduling:
+   - When the user asks to reschedule, delay, postpone, adjust execution windows, or recover timeline for their active study timetable, invoke the `reschedule_active_timetable` tool.
+   - Provide `shift_days` (positive integer to shift forward, negative to shift backward), `reason`, and/or specific `adjustments` for individual days (`day_index`, `new_window_start`, `new_window_deadline`, `new_target_date`).
+   - Completed blocks will remain locked and untouched; pending and in-progress blocks will be safely adjusted.
 """
 
 
@@ -307,6 +312,40 @@ STAGE_WINDOW_TIMETABLE_DECLARATION = {
             }
         },
         "required": ["title", "track_id", "total_days", "blocks"]
+    }
+}
+
+
+RESCHEDULE_ACTIVE_TIMETABLE_DECLARATION = {
+    "name": "reschedule_active_timetable",
+    "description": (
+        "Reschedule, delay, or modify time windows for pending blocks in the currently active study timetable. "
+        "Use when the user requests date shifts, window time changes, or timeline recovery."
+    ),
+    "parameters": {
+        "type": "OBJECT",
+        "properties": {
+            "shift_days": {
+                "type": "INTEGER",
+                "description": "Number of days to shift pending blocks forward (positive) or backward (negative)."
+            },
+            "reason": {
+                "type": "STRING",
+                "description": "Reason for rescheduling (e.g. fatigue, schedule conflict)."
+            },
+            "adjustments": {
+                "type": "ARRAY",
+                "items": {
+                    "type": "OBJECT",
+                    "properties": {
+                        "day_index": {"type": "INTEGER"},
+                        "new_window_start": {"type": "STRING", "description": "HH:MM format"},
+                        "new_window_deadline": {"type": "STRING", "description": "HH:MM format"},
+                        "new_target_date": {"type": "STRING", "description": "YYYY-MM-DD format"}
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -513,12 +552,173 @@ def execute_stage_window_timetable(
     }
 
 
+def execute_reschedule_active_timetable(
+    db: Session,
+    current_user: Any,
+    args: dict[str, Any],
+) -> dict[str, Any]:
+    from app.routers.timetables import _get_user_id, apply_timetable_reschedule
+    from app.schemas import BlockRescheduleItem, TimetableReschedulePayload
+
+    user_id = _get_user_id(current_user)
+    timetable = (
+        db.query(StudyTimetable)
+        .filter(StudyTimetable.user_id == user_id, StudyTimetable.status == "ACTIVE")
+        .first()
+    )
+    if not timetable:
+        raise HTTPException(status_code=404, detail="No active study timetable found to reschedule.")
+
+    shift_days = int(args.get("shift_days") or 0)
+    reason = str(args.get("reason") or "User requested adjustment")
+    raw_adjustments = args.get("adjustments") or args.get("block_adjustments") or []
+
+    adjustments = []
+    for raw in raw_adjustments:
+        day_idx = raw.get("day_index") or raw.get("day_number")
+        block_id = raw.get("block_id")
+        new_target_date = raw.get("new_target_date")
+        if isinstance(new_target_date, str):
+            try:
+                new_target_date = datetime.strptime(new_target_date.strip(), "%Y-%m-%d").date()
+            except Exception:
+                new_target_date = None
+
+        new_start = raw.get("new_window_start")
+        if new_start:
+            try:
+                new_start = _parse_time_str(new_start)
+            except Exception:
+                new_start = None
+
+        new_deadline = raw.get("new_window_deadline")
+        if new_deadline:
+            try:
+                new_deadline = _parse_time_str(new_deadline)
+            except Exception:
+                new_deadline = None
+
+        adjustments.append(
+            BlockRescheduleItem(
+                day_index=int(day_idx) if day_idx is not None else None,
+                block_id=int(block_id) if block_id is not None else None,
+                new_target_date=new_target_date,
+                new_window_start=new_start,
+                new_window_deadline=new_deadline,
+            )
+        )
+
+    reschedule_payload = TimetableReschedulePayload(
+        shift_days=shift_days,
+        block_adjustments=adjustments,
+        reason=reason,
+    )
+
+    updated_tt = apply_timetable_reschedule(db, timetable, reschedule_payload)
+    completed_count = sum(1 for b in updated_tt.blocks if b.status == "COMPLETED")
+    mutable_count = len(updated_tt.blocks) - completed_count
+
+    return {
+        "type": "TIMETABLE_CARD",
+        "action": "TIMETABLE_RESCHEDULED",
+        "is_rescheduled": True,
+        "timetable_id": updated_tt.id,
+        "title": updated_tt.title,
+        "total_days": updated_tt.total_days,
+        "audit_notes": updated_tt.audit_notes,
+        "reason": reason,
+        "blocks": [
+            {
+                "id": b.id,
+                "day_number": b.day_number,
+                "target_date": str(b.target_date),
+                "window": f"{b.window_start.strftime('%H:%M')} - {b.window_deadline.strftime('%H:%M')}",
+                "duration": f"{b.duration_minutes}m",
+                "topic": b.topic,
+                "deliverable": b.deliverable_spec,
+                "resources": b.resources or [],
+                "status": b.status,
+            }
+            for b in updated_tt.blocks
+        ],
+        "message": (
+            f"Successfully rescheduled active timetable '{updated_tt.title}'. "
+            f"{mutable_count} pending block(s) adjusted with {shift_days:+d} day shift. "
+            f"{completed_count} completed block(s) kept untouched."
+        ),
+    }
+
+
+def _extract_reschedule_intent(message: str) -> Optional[dict[str, Any]]:
+    low = message.lower()
+    reschedule_keywords = [
+        "reschedule", "delay", "postpone", "shift pending",
+        "adjust the time window", "adjust timetable", "adjust window", "adjust my time window"
+    ]
+    if not any(k in low for k in reschedule_keywords):
+        return None
+
+    shift_match = re.search(r"(?:shift|delay|postpone)(?:\s+by)?\s+(\+?-?\d+)\s*day", low)
+    shift_days = int(shift_match.group(1)) if shift_match else 0
+
+    adjustments = []
+    day_matches = re.finditer(r"day\s+(\d+)[^\n\r]*?(\d{1,2}:\d{2})\s*(?:-|to)\s*(\d{1,2}:\d{2})", low)
+    for dm in day_matches:
+        d_idx = int(dm.group(1))
+        w_start = dm.group(2)
+        w_end = dm.group(3)
+        adjustments.append({
+            "day_index": d_idx,
+            "new_window_start": w_start,
+            "new_window_deadline": w_end,
+        })
+
+    if not adjustments:
+        start_m = re.search(r"start\s*(?:at|to|is|=)?\s*(\d{1,2}:\d{2})", low)
+        end_m = re.search(r"(?:deadline|end|cutoff)\s*(?:at|to|is|=)?\s*(\d{1,2}:\d{2})", low)
+        day_m = re.search(r"day\s*(\d+)", low)
+        if start_m and end_m:
+            adjustments.append({
+                "day_index": int(day_m.group(1)) if day_m else None,
+                "new_window_start": start_m.group(1),
+                "new_window_deadline": end_m.group(1),
+            })
+
+    date_match = re.search(r"(?:date|target_date)\s*(?:to|is|=)?\s*(\d{4}-\d{2}-\d{2})", low)
+    new_target_date = date_match.group(1) if date_match else None
+    if new_target_date:
+        if adjustments:
+            adjustments[0]["new_target_date"] = new_target_date
+        else:
+            day_m = re.search(r"day\s*(\d+)", low)
+            adjustments.append({
+                "day_index": int(day_m.group(1)) if day_m else None,
+                "new_target_date": new_target_date,
+            })
+
+    if shift_days == 0 and not adjustments:
+        if "by a day" in low or "one day" in low:
+            shift_days = 1
+        elif "two days" in low:
+            shift_days = 2
+        elif not any(w in low for w in ["window", ":"]):
+            shift_days = 1
+
+    return {
+        "shift_days": shift_days,
+        "reason": "User requested adjustment via chat",
+        "adjustments": adjustments,
+    }
+
+
 def _extract_timetable_proposal(message: str) -> Optional[dict[str, Any]]:
     """
     Detects scheduling/timetable intent and external AI study plans, generating tool argument dictionary.
     Supports raw topic notes, multimedia URLs (YouTube, GitHub, documentation), or full schedules generated by ChatGPT/Claude/Gemini.
     """
     msg = message.strip()
+    if _extract_reschedule_intent(msg):
+        return None
     schedule_keywords = [
         "timetable", "study plan", "study schedule", "schedule my week",
         "weekly schedule", "window timetable", "schedule study",
@@ -725,6 +925,29 @@ def support_chat(
             data=proposal,
         )
 
+    # Check for Study Timetable Reschedule Flow (Direct semantic extractor / fallback)
+    reschedule_intent = _extract_reschedule_intent(user_msg)
+    if reschedule_intent:
+        try:
+            card_payload = execute_reschedule_active_timetable(db, current_user, reschedule_intent)
+            reply_msg = (
+                f"🔄 {card_payload['message']} "
+                f"Your active HUD window has been dynamically updated."
+            )
+            return SupportChatResponse(
+                reply=reply_msg,
+                session_id=payload.session_id,
+                action="TIMETABLE_RESCHEDULED",
+                data=card_payload,
+            )
+        except HTTPException as he:
+            return SupportChatResponse(
+                reply=f"⚠ Reschedule request could not be completed: {he.detail}",
+                session_id=payload.session_id,
+            )
+        except Exception as err:
+            logger.warning("Direct timetable reschedule failed: %s", err)
+
     # Check for Window-Anchored Study Timetable Flow (Direct semantic extractor / fallback)
     timetable_intent = _extract_timetable_proposal(user_msg)
     if timetable_intent:
@@ -765,7 +988,7 @@ def support_chat(
                             system_instruction=_SYSTEM_PROMPT,
                             temperature=0.6,
                             max_output_tokens=500,
-                            tools=[{"function_declarations": [STAGE_WINDOW_TIMETABLE_DECLARATION]}],
+                            tools=[{"function_declarations": [STAGE_WINDOW_TIMETABLE_DECLARATION, RESCHEDULE_ACTIVE_TIMETABLE_DECLARATION]}],
                         ),
                     )
                     # Inspect tool / function calls from Gemini
@@ -784,6 +1007,19 @@ def support_chat(
                                     reply=reply_msg,
                                     session_id=payload.session_id,
                                     action="TIMETABLE_CARD",
+                                    data=card_payload,
+                                )
+                            elif fc.name == "reschedule_active_timetable":
+                                args = dict(fc.args) if fc.args else {}
+                                card_payload = execute_reschedule_active_timetable(db, current_user, args)
+                                reply_msg = (
+                                    f"🔄 {card_payload['message']} "
+                                    f"Your active HUD window has been dynamically updated."
+                                )
+                                return SupportChatResponse(
+                                    reply=reply_msg,
+                                    session_id=payload.session_id,
+                                    action="TIMETABLE_RESCHEDULED",
                                     data=card_payload,
                                 )
 
