@@ -82,6 +82,8 @@ def init_db():
                     ALTER TABLE user_settings ADD COLUMN IF NOT EXISTS longest_streak_days INTEGER DEFAULT 0;
                     ALTER TABLE user_settings ADD COLUMN IF NOT EXISTS daily_floor_target INTEGER DEFAULT 2;
                     ALTER TABLE focus_sessions ADD COLUMN IF NOT EXISTS timetable_block_id INTEGER REFERENCES timetable_blocks(id) ON DELETE SET NULL;
+                    ALTER TABLE timetable_blocks ADD COLUMN IF NOT EXISTS resources JSONB DEFAULT '[]'::jsonb;
+                    ALTER TABLE study_timetables ADD COLUMN IF NOT EXISTS audit_notes TEXT;
                 """))
                 conn.commit()
             except Exception:
@@ -104,6 +106,20 @@ def init_db():
                             conn.execute(text("ALTER TABLE focus_sessions ADD COLUMN timetable_block_id INTEGER REFERENCES timetable_blocks(id)"))
                         except Exception:
                             pass
+            if inspector.has_table("timetable_blocks"):
+                tb_cols = [c["name"] for c in inspector.get_columns("timetable_blocks")]
+                if "resources" not in tb_cols:
+                    try:
+                        conn.execute(text("ALTER TABLE timetable_blocks ADD COLUMN resources JSON DEFAULT '[]'"))
+                    except Exception:
+                        pass
+            if inspector.has_table("study_timetables"):
+                st_cols = [c["name"] for c in inspector.get_columns("study_timetables")]
+                if "audit_notes" not in st_cols:
+                    try:
+                        conn.execute(text("ALTER TABLE study_timetables ADD COLUMN audit_notes TEXT"))
+                    except Exception:
+                        pass
             if inspector.has_table("user_settings"):
                 setting_cols = [c["name"] for c in inspector.get_columns("user_settings")]
                 sqlite_col_defs = {

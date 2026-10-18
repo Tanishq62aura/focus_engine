@@ -40,11 +40,17 @@ def stage_timetable(
         StudyTimetable.status == "ACTIVE",
     ).update({"status": "ARCHIVED"})
 
+    audit_notes = payload.audit_notes
+    if not audit_notes:
+        from app.routers.support import audit_timetable_feasibility
+        audit_notes = audit_timetable_feasibility(payload.blocks)
+
     timetable = StudyTimetable(
         user_id=user_id,
         title=payload.title,
         track_id=payload.track_id,
         total_days=payload.total_days,
+        audit_notes=audit_notes,
         status="ACTIVE",
     )
     db.add(timetable)

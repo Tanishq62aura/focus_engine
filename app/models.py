@@ -252,6 +252,7 @@ class StudyTimetable(Base):
     track_id = Column(String(64), nullable=False, default="coding")
     total_days = Column(Integer, nullable=False, default=7)
     status = Column(String(32), nullable=False, default="ACTIVE")  # ACTIVE, COMPLETED, ARCHIVED
+    audit_notes = Column(Text, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     blocks = relationship(
@@ -280,6 +281,7 @@ class TimetableBlock(Base):
     topic = Column(String(128), nullable=False)
     deliverable_spec = Column(Text, nullable=False)
     verification_rules = Column(Text, nullable=False)
+    resources = Column(JSON, nullable=True, default=list)  # URLs, docs, video references
     status = Column(String(32), nullable=False, default="PENDING")  # PENDING, IN_PROGRESS, COMPLETED, FORFEIT
     actual_started_at = Column(DateTime(timezone=True), nullable=True)
     actual_completed_at = Column(DateTime(timezone=True), nullable=True)
@@ -293,6 +295,12 @@ class TimetableBlock(Base):
     @completed_at.setter
     def completed_at(self, value):
         self.actual_completed_at = value
+
+
+# Model Aliases for backward compatibility
+StudyTimetableBlock = TimetableBlock
+StudyTimetableModel = StudyTimetable
+
 
 
 

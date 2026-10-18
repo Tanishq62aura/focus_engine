@@ -512,6 +512,7 @@ class TimetableBlockBase(BaseModel):
     topic: str = Field(..., min_length=1, max_length=128)
     deliverable_spec: str
     verification_rules: str
+    resources: Optional[List[str]] = Field(default_factory=list)
 
     @model_validator(mode="after")
     def validate_window(self):
@@ -552,10 +553,16 @@ class TimetableBlockResponse(TimetableBlockBase):
         from_attributes = True
 
 
+# Aliases for explicit StudyTimetableBlock naming
+StudyTimetableBlockCreate = TimetableBlockCreate
+StudyTimetableBlockResponse = TimetableBlockResponse
+
+
 class StudyTimetableCreate(BaseModel):
     title: str = Field(..., min_length=1, max_length=128)
     track_id: str = "coding"
     total_days: int = Field(7, ge=1, le=30)
+    audit_notes: Optional[str] = None
     blocks: List[TimetableBlockCreate] = Field(..., min_length=1)
 
 
@@ -566,6 +573,7 @@ class StudyTimetableResponse(BaseModel):
     track_id: str
     total_days: int
     status: str
+    audit_notes: Optional[str] = None
     created_at: Optional[datetime] = None
     blocks: List[TimetableBlockResponse] = []
     active_target_block: Optional[TimetableBlockResponse] = None

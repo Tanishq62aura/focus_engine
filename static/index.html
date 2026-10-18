@@ -2228,11 +2228,47 @@
       containerEl.appendChild(card);
     }
 
+    function formatResourceBadges(resources) {
+      if (!resources || !Array.isArray(resources) || resources.length === 0) return '';
+      const badges = resources.map((url, idx) => {
+        const u = String(url).trim();
+        if (!u) return '';
+        const isVideo = /youtube\.com|youtu\.be|vimeo\.com/i.test(u);
+        const isGithub = /github\.com/i.test(u);
+        const isDocs = /docs?|documentation|guide/i.test(u);
+        const label = isVideo ? '▶ Video' : isGithub ? '📦 Code' : isDocs ? '📄 Docs' : `🔗 Resource ${idx + 1}`;
+        return `
+          <a href="${escapeHtml(u)}" target="_blank" rel="noopener noreferrer" 
+             class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-sans font-medium bg-zinc-800 hover:bg-zinc-700 text-emerald-400 hover:text-emerald-300 border border-zinc-700 hover:border-emerald-500/50 transition" title="${escapeHtml(u)}">
+            <span>${label}</span>
+            <svg class="w-2.5 h-2.5 opacity-60" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"></path></svg>
+          </a>
+        `;
+      }).filter(Boolean).join('');
+      return badges ? `<div class="flex items-center gap-1.5 flex-wrap mt-1">${badges}</div>` : '';
+    }
+
+    function formatAuditCallout(auditNotes) {
+      if (!auditNotes) return '';
+      const isHigh = /High|Verified/i.test(auditNotes);
+      const borderClass = isHigh ? 'border-emerald-500/30 bg-emerald-950/20 text-emerald-300' : 'border-amber-500/30 bg-amber-950/20 text-amber-300';
+      return `
+        <div class="mt-2 p-2 rounded-lg border text-[11px] font-sans leading-relaxed ${borderClass}">
+          <div class="flex items-center gap-1.5 font-semibold text-[11px] mb-0.5">
+            <svg class="w-3.5 h-3.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+            <span>AI Feasibility Audit</span>
+          </div>
+          <div class="text-[10px] opacity-90 leading-normal">${escapeHtml(auditNotes)}</div>
+        </div>
+      `;
+    }
+
     function renderTimetableChatCard(containerEl, data) {
       const timetable = data.timetable || data;
       const blocks = timetable.blocks || [];
       const totalDays = timetable.total_days || blocks.length || 7;
       const title = timetable.title || 'Study Timetable';
+      const auditNotes = timetable.audit_notes || data.audit_notes;
 
       const card = document.createElement('div');
       card.className = 'mt-3 p-3 bg-zinc-900/90 border border-zinc-800 rounded-lg shadow-inner font-mono text-xs space-y-2';
@@ -2245,15 +2281,19 @@
         const status = b.status || 'PENDING';
         const isPending = status === 'PENDING';
         const statusClass = isPending ? 'bg-zinc-800 text-zinc-400 border-zinc-700' : 'bg-emerald-500/10 text-emerald-300 border-emerald-500/30';
+        const resHtml = formatResourceBadges(b.resources);
 
         return `
-          <div class="py-1.5 px-2 rounded bg-zinc-950/60 border border-zinc-850 flex items-center justify-between gap-2 flex-wrap">
-            <div class="flex items-center gap-2">
-              <span class="font-bold text-zinc-200">Day ${dayIdx}</span>
-              <span class="text-zinc-500 text-[11px]">${escapeHtml(windowStr)}</span>
+          <div class="py-1.5 px-2 rounded bg-zinc-950/60 border border-zinc-850 flex flex-col gap-1">
+            <div class="flex items-center justify-between gap-2 flex-wrap">
+              <div class="flex items-center gap-2">
+                <span class="font-bold text-zinc-200">Day ${dayIdx}</span>
+                <span class="text-zinc-500 text-[11px]">${escapeHtml(windowStr)}</span>
+              </div>
+              <div class="text-[11px] text-zinc-300 font-sans truncate flex-1 min-w-[120px]" title="${escapeHtml(b.topic || '')}">${escapeHtml(b.topic || 'Focus Module')}</div>
+              <span class="px-1.5 py-0.5 rounded text-[10px] font-mono border ${statusClass}">${escapeHtml(status)}</span>
             </div>
-            <div class="text-[11px] text-zinc-300 font-sans truncate flex-1 min-w-[120px]" title="${escapeHtml(b.topic || '')}">${escapeHtml(b.topic || 'Focus Module')}</div>
-            <span class="px-1.5 py-0.5 rounded text-[10px] font-mono border ${statusClass}">${escapeHtml(status)}</span>
+            ${resHtml}
           </div>
         `;
       }).join('');
@@ -2268,6 +2308,7 @@
         <div class="space-y-1.5 max-h-56 overflow-y-auto pr-1">
           ${blocksHtml}
         </div>
+        ${formatAuditCallout(auditNotes)}
         <button id="btn-view-hud-timetable" class="mt-2 w-full py-1.5 px-3 bg-emerald-600 hover:bg-emerald-500 text-white rounded font-sans font-medium text-xs transition active:scale-95 cursor-pointer">
           View on HUD
         </button>
@@ -2408,6 +2449,8 @@
               <span>${b.duration_minutes}m target</span>
             </div>
             ${b.deliverable_spec ? `<div class="text-[11px] text-zinc-400 font-sans italic leading-relaxed">Deliverable: ${escapeHtml(b.deliverable_spec)}</div>` : ''}
+            ${formatResourceBadges(b.resources)}
+            ${formatAuditCallout(timetable.audit_notes)}
             <div>
               ${buttonHtml}
             </div>
