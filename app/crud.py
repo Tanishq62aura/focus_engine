@@ -159,10 +159,11 @@ def start_session(
             sched.status = "started"
             db.add(sched)
 
+    clean_task_id = str(data.task_id).strip() if (data.task_id and str(data.task_id).strip()) else None
     session = models.FocusSession(
         id=_new_id(),
         user_id=user_id,
-        task_id=data.task_id,
+        task_id=clean_task_id,
         schedule_id=data.schedule_id,
         is_five_min_intervention=data.is_five_min_intervention,
         started_at=now,

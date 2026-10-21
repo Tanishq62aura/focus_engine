@@ -41,29 +41,37 @@ def start_session(
     - Critical tracks (tp_aptitude, theory) automatically enforce 5-minute micro-start interventions,
       cap session target duration to 25m Pomodoro, and trigger physical phone lockdown.
     """
-    task = crud.get_task(db, data.task_id, user_id=current_user)
-    if not task:
-        raise HTTPException(status_code=404, detail="Task not found or unauthorized")
+    task = None
+    if data.task_id and str(data.task_id).strip():
+        task = crud.get_task(db, str(data.task_id).strip(), user_id=current_user)
+        if not task:
+            raise HTTPException(status_code=404, detail="Task not found or unauthorized")
 
-    cat = (task.category or "").lower().strip()
-    is_critical = cat in CRITICAL_TRACKS
+    if task:
+        cat = (task.category or "").lower().strip()
+        is_critical = cat in CRITICAL_TRACKS
 
-    # 1. Behavioral Countermeasures: Dynamic Track Penalty Injection
-    if is_critical:
-        # Mandatory 5-minute intervention floor
-        data.is_five_min_intervention = True
-        # Cap target duration to 25m Pomodoro
-        target_duration = 25
-        # Dispatch peripheral lockdown hook via ntfy.sh
-        background_tasks.add_task(mobile_bridge.dispatch_peripheral_lockdown, cat)
-        logger.info(
-            "🚨 Critical track [%s] detected for task %r. Injected 5-min intervention & 25m cap.",
-            cat,
-            task.title,
-        )
+        # 1. Behavioral Countermeasures: Dynamic Track Penalty Injection
+        if is_critical:
+            # Mandatory 5-minute intervention floor
+            data.is_five_min_intervention = True
+            # Cap target duration to 25m Pomodoro
+            target_duration = 25
+            # Dispatch peripheral lockdown hook via ntfy.sh
+            background_tasks.add_task(mobile_bridge.dispatch_peripheral_lockdown, cat)
+            logger.info(
+                "🚨 Critical track [%s] detected for task %r. Injected 5-min intervention & 25m cap.",
+                cat,
+                task.title,
+            )
+        else:
+            target_duration = task.estimated_duration_min or 25
+            background_tasks.add_task(mobile_bridge.dispatch_session_start, task.title, target_duration)
     else:
-        target_duration = task.estimated_duration_min or 25
-        background_tasks.add_task(mobile_bridge.dispatch_session_start, task.title, target_duration)
+        # Standalone ad-hoc session
+        data.task_id = None
+        target_duration = 25
+        background_tasks.add_task(mobile_bridge.dispatch_session_start, "Ad-hoc Focus Session", target_duration)
 
     session = crud.start_session(db, data, user_id=current_user)
     session.target_duration_min = target_duration
@@ -82,7 +90,7 @@ def end_session(
     session = crud.end_session(db, session_id, data, user_id=current_user)
     if not session:
         raise HTTPException(status_code=404, detail="Session not found or unauthorized")
-    task = crud.get_task(db, session.task_id, user_id=current_user)
+    task = crud.get_task(db, session.task_id, user_id=current_user) if session.task_id else None
     task_title = task.title if task else "Focus Session"
     background_tasks.add_task(mobile_bridge.dispatch_session_end, task_title)
     return session

@@ -89,7 +89,7 @@ class SnoozeResponse(BaseModel):
 # Session
 # ---------------------------------------------------------------------------
 class SessionStart(BaseModel):
-    task_id: str
+    task_id: Optional[str] = None
     schedule_id: Optional[str] = None
     is_five_min_intervention: bool = False
 
@@ -101,16 +101,16 @@ class SessionEnd(BaseModel):
 class SessionRead(BaseModel):
     id: str
     user_id: Optional[str] = None
-    task_id: str
-    schedule_id: Optional[str]
-    is_five_min_intervention: bool
-    started_at: Optional[datetime]
-    ended_at: Optional[datetime]
-    start_latency_min: int
-    actual_focused_seconds: int
-    verification_status: str
-    pasted_burst_detected: bool
-    notes: Optional[str]
+    task_id: Optional[str] = None
+    schedule_id: Optional[str] = None
+    is_five_min_intervention: bool = False
+    started_at: Optional[datetime] = None
+    ended_at: Optional[datetime] = None
+    start_latency_min: int = 0
+    actual_focused_seconds: int = 0
+    verification_status: str = "unverified"
+    pasted_burst_detected: bool = False
+    notes: Optional[str] = None
     target_duration_min: Optional[int] = None
 
     model_config = {"from_attributes": True}

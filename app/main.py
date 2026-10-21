@@ -374,7 +374,7 @@ def end_session(
     session = crud.end_session(db, session_id, data, user_id=current_user)
     if not session:
         raise HTTPException(status_code=404, detail="Session not found or unauthorized")
-    task = crud.get_task(db, session.task_id, user_id=current_user)
+    task = crud.get_task(db, session.task_id, user_id=current_user) if session.task_id else None
     task_title = task.title if task else "Focus Session"
     background_tasks.add_task(mobile_bridge.dispatch_session_end, task_title)
     return session
