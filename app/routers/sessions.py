@@ -58,7 +58,10 @@ def start_session(
             # Cap target duration to 25m Pomodoro
             target_duration = 25
             # Dispatch peripheral lockdown hook via ntfy.sh
-            background_tasks.add_task(mobile_bridge.dispatch_peripheral_lockdown, cat)
+            try:
+                mobile_bridge.dispatch_peripheral_lockdown(cat, db=db, user_id=current_user)
+            except Exception as e:
+                logger.warning(f"Mobile bridge dispatch non-fatal failure: {e}")
             logger.info(
                 "🚨 Critical track [%s] detected for task %r. Injected 5-min intervention & 25m cap.",
                 cat,
@@ -66,15 +69,18 @@ def start_session(
             )
         else:
             target_duration = task.estimated_duration_min or 25
-            background_tasks.add_task(mobile_bridge.dispatch_session_start, task.title, target_duration)
     else:
         # Standalone ad-hoc session
         data.task_id = None
         target_duration = 25
-        background_tasks.add_task(mobile_bridge.dispatch_session_start, "Ad-hoc Focus Session", target_duration)
 
     session = crud.start_session(db, data, user_id=current_user)
     session.target_duration_min = target_duration
+
+    try:
+        mobile_bridge.dispatch_session_start(session, db=db, user_id=current_user)
+    except Exception as e:
+        logger.warning(f"Mobile bridge dispatch non-fatal failure: {e}")
 
     return session
 
@@ -90,9 +96,12 @@ def end_session(
     session = crud.end_session(db, session_id, data, user_id=current_user)
     if not session:
         raise HTTPException(status_code=404, detail="Session not found or unauthorized")
-    task = crud.get_task(db, session.task_id, user_id=current_user) if session.task_id else None
-    task_title = task.title if task else "Focus Session"
-    background_tasks.add_task(mobile_bridge.dispatch_session_end, task_title)
+
+    try:
+        mobile_bridge.dispatch_session_end(session, db=db, user_id=current_user)
+    except Exception as e:
+        logger.warning(f"Mobile bridge dispatch non-fatal failure: {e}")
+
     return session
 
 
@@ -140,10 +149,10 @@ def complete_active_session(
         db.commit()
         db.refresh(session)
 
-    task = crud.get_task(db, session.task_id, user_id=current_user)
-    task_title = task.title if task else "Focus Session"
-    category = (task.category or "").lower().strip() if task else "coding"
-    background_tasks.add_task(mobile_bridge.dispatch_session_end, task_title)
+    try:
+        mobile_bridge.dispatch_session_end(session, db=db, user_id=current_user)
+    except Exception as e:
+        logger.warning(f"Mobile bridge dispatch non-fatal failure: {e}")
 
     proof = data.code_snippet or data.proof_text or ""
     question = None
@@ -463,9 +472,10 @@ def emergency_abort_session(
         success=False,
     )
 
-    task = crud.get_task(db, session.task_id, user_id=current_user)
-    task_title = task.title if task else "Focus Session"
-    background_tasks.add_task(mobile_bridge.dispatch_session_end, f"ABORTED: {task_title}")
+    try:
+        mobile_bridge.dispatch_session_end(session, db=db, user_id=current_user)
+    except Exception as e:
+        logger.warning(f"Mobile bridge dispatch non-fatal failure: {e}")
 
     return {
         "success": True,

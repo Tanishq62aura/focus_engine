@@ -402,6 +402,7 @@ class TimetableBlock(Base):
 StudyTimetableBlock = TimetableBlock
 StudyTimetableModel = StudyTimetable
 StudySession = FocusSession
+UserSettings = UserSetting
 
 
 class SessionHeartbeat(Base):
