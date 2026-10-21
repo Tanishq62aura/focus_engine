@@ -1476,6 +1476,7 @@ class VivaVerifyPayload(BaseModel):
     answer: Optional[str] = None
     user_answer: Optional[str] = None
     transcript: Optional[str] = None
+    defense_transcript: Optional[str] = None
     proof_text: Optional[str] = None
     timetable_block_id: Optional[int] = None
     passed: Optional[bool] = None
@@ -1603,51 +1604,54 @@ def verify_viva_defense(
         )
 
     # Structured Viva Defense Evaluation
-    from app.services.viva_evaluator import evaluate_viva_defense
+    from app.services.viva_evaluator import VivaEvaluationResult, evaluate_viva_defense
 
     transcript = (
-        payload.transcript
+        payload.defense_transcript
+        or payload.transcript
         or payload.answer
         or payload.user_answer
         or (session.viva_answer if session else None)
         or ""
     )
     block_topic = block.topic if block else ""
-    block_deliverable = (block.deliverable_spec if block else "") or ""
+    block_deliverable = (block.deliverable_spec if hasattr(block, "deliverable_spec") and block else "") or ""
 
+    # Authoritative Server-Side Evaluation
     if transcript:
         eval_result = evaluate_viva_defense(
             transcript=transcript,
             block_topic=block_topic,
             block_deliverable=block_deliverable,
         )
-        if eval_result.get("security_flag") or eval_result.get("rejection_reason") == "TRANSCRIPT_TOO_SHORT":
-            passed = False
-        elif payload.passed is not None:
-            passed = payload.passed
-        else:
-            passed = eval_result["passed"]
-    elif payload.passed is not None:
-        passed = payload.passed
-        eval_result = {
+        # Never allow client payload.passed to override the rubric evaluation
+        passed = bool(eval_result.passed)
+        critique = eval_result.critique
+        score = getattr(eval_result, "score", eval_result.get("composite", 0.0))
+    else:
+        # Fallback ONLY when transcript submission is omitted
+        passed = bool(payload.passed)
+        critique = "Direct manual verification flag"
+        score = 100.0 if passed else 0.0
+        eval_result = VivaEvaluationResult({
             "passed": passed,
             "security_flag": False,
             "rejection_reason": None if passed else "MANUAL_REJECTION",
-            "critique": "Manually verified" if passed else "Manual rejection",
-            "depth": 80.0 if passed else 0.0,
-            "artifacts": 80.0 if passed else 0.0,
-            "alignment": 80.0 if passed else 0.0,
-            "composite": 80.0 if passed else 0.0,
-        }
-    else:
-        eval_result = evaluate_viva_defense(
-            transcript="",
-            block_topic=block_topic,
-            block_deliverable=block_deliverable,
-        )
-        passed = eval_result["passed"]
+            "critique": critique,
+            "score": score,
+            "depth": score,
+            "artifacts": score,
+            "alignment": score,
+            "composite": score,
+            "scores": {
+                "depth": score,
+                "artifacts": score,
+                "alignment": score,
+                "composite": score,
+            },
+        })
 
-    now_utc = datetime.utcnow()
+    now_utc = datetime.now(timezone.utc)
     parent_timetable = None
 
     if passed:

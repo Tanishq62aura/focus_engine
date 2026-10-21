@@ -315,3 +315,160 @@ def test_verify_viva_route_injection_rejection(client, db):
     db.expire_all()
     reloaded_block = db.get(TimetableBlock, block.id)
     assert reloaded_block.status != "COMPLETED"
+
+
+# ===========================================================================
+# TEST 8: Payload Override Resistance
+# ===========================================================================
+def test_payload_override_resistance(client, db):
+    """
+    A request with payload.passed = True and a failing transcript
+    (superficial or sub-60 characters) MUST result in passed=False
+    and must NOT mark the block as COMPLETED.
+    """
+    now = datetime.now(timezone.utc)
+    tt = StudyTimetable(
+        user_id=TEST_USER_ID,
+        title="Test Payload Override Resistance",
+        track_id="coding",
+        total_days=1,
+        status="ACTIVE",
+    )
+    db.add(tt)
+    db.commit()
+    db.refresh(tt)
+
+    block_1 = TimetableBlock(
+        timetable_id=tt.id,
+        day_number=1,
+        target_date=now.date(),
+        window_start=now.time(),
+        window_deadline=now.time(),
+        duration_minutes=60,
+        topic="Consensus Algorithms",
+        deliverable_spec="Raft Leader Election",
+        verification_rules="Automated tests",
+        status="IN_PROGRESS",
+    )
+    db.add(block_1)
+    db.commit()
+    db.refresh(block_1)
+
+    # Sub-case A: Sub-60 char transcript with passed=True
+    short_payload = {
+        "timetable_block_id": block_1.id,
+        "transcript": "Short defense.",
+        "passed": True,
+    }
+    res_a = client.post("/api/support/verify-viva", json=short_payload)
+    assert res_a.status_code == 200
+    data_a = res_a.json()
+    assert data_a["verified"] is False
+    assert data_a["status"] == "rejected"
+    assert data_a["rejection_reason"] == "TRANSCRIPT_TOO_SHORT"
+
+    db.expire_all()
+    reloaded_block_1 = db.get(TimetableBlock, block_1.id)
+    assert reloaded_block_1.status != "COMPLETED"
+
+    # Sub-case B: Superficial transcript (>=60 chars) with passed=True
+    block_2 = TimetableBlock(
+        timetable_id=tt.id,
+        day_number=2,
+        target_date=now.date(),
+        window_start=now.time(),
+        window_deadline=now.time(),
+        duration_minutes=60,
+        topic="Consensus Algorithms",
+        deliverable_spec="Raft Leader Election",
+        verification_rules="Automated tests",
+        status="IN_PROGRESS",
+    )
+    db.add(block_2)
+    db.commit()
+    db.refresh(block_2)
+
+    superficial_payload = {
+        "timetable_block_id": block_2.id,
+        "transcript": "I read the book chapter and everything was good and I finished all my simple tasks.",
+        "passed": True,
+    }
+    assert len(superficial_payload["transcript"]) >= 60
+
+    res_b = client.post("/api/support/verify-viva", json=superficial_payload)
+    assert res_b.status_code == 200
+    data_b = res_b.json()
+    assert data_b["verified"] is False
+    assert data_b["status"] == "rejected"
+    assert data_b["rejection_reason"] == "RUBRIC_THRESHOLD_NOT_MET"
+
+    db.expire_all()
+    reloaded_block_2 = db.get(TimetableBlock, block_2.id)
+    assert reloaded_block_2.status != "COMPLETED"
+
+
+# ===========================================================================
+# TEST 9: Word Boundary Precision for Fallback Keywords
+# ===========================================================================
+def test_word_boundary_precision_for_keywords():
+    """
+    A transcript containing words like 'action', 'decision', or 'score'
+    does not trigger false-positive keyword hits for short tokens like 'io' or 'core'.
+    """
+    import re
+    from app.services.viva_evaluator import (
+        TECHNICAL_DEPTH_KEYWORDS,
+        ARTIFACT_KEYWORDS,
+        get_gemini_client,
+    )
+
+    transcript = (
+        "Our team took immediate action and made a final decision regarding the rubric score."
+    )
+    t_lower = transcript.lower()
+
+    # Extract all discrete words from transcript
+    words_in_transcript = set(re.findall(r"\b[a-z0-9_-]+\b", t_lower))
+
+    # Verify that substring-embedded tokens are NOT in words_in_transcript
+    assert "io" not in words_in_transcript
+    assert "core" not in words_in_transcript
+    assert "pr" not in words_in_transcript
+
+    # Set intersection match counts for short tokens
+    short_tokens = {"io", "core", "pr"}
+    assert len(words_in_transcript & short_tokens) == 0
+
+    # Test evaluation behavior
+    res = _evaluate_mock(
+        transcript=transcript,
+        block_topic="System Performance Review",
+        block_deliverable="Architecture documentation",
+    )
+    assert res["passed"] is False
+    # Technical depth must remain low since no genuine technical keywords were present
+    assert res["depth"] < 60.0
+    assert res["scores"]["depth"] < 60.0
+
+    # In contrast, standalone exact tokens must match
+    standalone_transcript = "We measured IO latency on each CPU core and submitted a PR."
+    standalone_words = set(re.findall(r"\b[a-z0-9_-]+\b", standalone_transcript.lower()))
+    assert "io" in standalone_words
+    assert "core" in standalone_words
+    assert "pr" in standalone_words
+    assert len(standalone_words & short_tokens) == 3
+
+
+# ===========================================================================
+# TEST 10: Lazy Gemini Client Getter
+# ===========================================================================
+def test_lazy_gemini_client_getter():
+    """Verify get_gemini_client() initializes lazily and safely."""
+    from app.services.viva_evaluator import get_gemini_client
+    client = get_gemini_client()
+    # In test environment with default/mock key, should return None
+    import os
+    api_key = os.getenv("GEMINI_API_KEY")
+    if not api_key or api_key == "<YOUR_GEMINI_API_KEY>":
+        assert client is None
+

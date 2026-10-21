@@ -28,16 +28,84 @@ INJECTION_PATTERNS = [
 try:
     from google import genai
     from google.genai import types as genai_types
-
-    _API_KEY = os.getenv("GEMINI_API_KEY", "")
-    if _API_KEY and _API_KEY != "<YOUR_GEMINI_API_KEY>":
-        _client = genai.Client(api_key=_API_KEY)
-    else:
-        _client = None
 except ImportError:
-    _client = None
+    genai = None  # type: ignore
+    genai_types = None  # type: ignore
+
+_gemini_client: Optional[genai.Client] = None
+
+
+def get_gemini_client() -> Optional[genai.Client]:
+    """Thread-safe lazy initialization for Gemini client."""
+    global _gemini_client
+    if genai is None:
+        return None
+    api_key = os.getenv("GEMINI_API_KEY")
+    if not api_key or api_key == "<YOUR_GEMINI_API_KEY>":
+        return None
+    if _gemini_client is None:
+        _gemini_client = genai.Client(api_key=api_key)
+    return _gemini_client
+
 
 _MODEL = os.getenv("GEMINI_MODEL", "gemini-3.8-flash")
+
+
+class VivaEvaluationResult(dict):
+    """Evaluation result supporting both dict item and attribute access."""
+
+    def __getattr__(self, name: str) -> Any:
+        try:
+            return self[name]
+        except KeyError:
+            if name == "score":
+                return self.get("composite", 0.0)
+            raise AttributeError(f"'VivaEvaluationResult' object has no attribute '{name}'")
+
+    def __setattr__(self, name: str, value: Any) -> None:
+        self[name] = value
+
+
+TECHNICAL_DEPTH_KEYWORDS = {
+    "complexity", "algorithm", "algorithms", "data", "structure", "data structure",
+    "memory", "latency", "cache", "concurrency", "thread", "threads", "lock",
+    "locks", "mutex", "pointer", "pointers", "reference", "references", "tree",
+    "trees", "graph", "graphs", "hash", "table", "tables", "index", "b-tree",
+    "stack", "heap", "queue", "binary", "search", "sort", "recursion",
+    "dynamic programming", "in-memory", "buffer", "protocol", "socket",
+    "network", "tcp", "http", "database", "query", "queries", "sql",
+    "transaction", "transactions", "acid", "isolation", "invariant",
+    "interface", "polymorphism", "inheritance", "asynchronous", "await",
+    "coroutine", "coroutines", "event loop", "profiling", "benchmark",
+    "benchmarks", "overhead", "trade-off", "tradeoff", "edge case", "boundary",
+    "null pointer", "overflow", "underflow", "race condition", "deadlock",
+    "idempotent", "serialization", "deserialization", "throughput", "sharding",
+    "replication", "partition", "distributed", "state machine", "byte", "bytes",
+    "cpu", "io", "runtime", "compilation", "microsecond", "microseconds",
+    "millisecond", "milliseconds", "false sharing", "cache line",
+    "synchronization", "telemetry", "regression", "endpoint",
+    "mutual exclusion", "hold and wait", "circular wait", "preemption",
+    "starvation", "semaphore", "paging", "virtual memory", "core", "cores",
+}
+
+ARTIFACT_KEYWORDS = {
+    "code", "function", "functions", "method", "methods", "class", "classes",
+    "module", "modules", "file", "files", "test", "tests", "unit test",
+    "unit tests", "pytest", "benchmark", "benchmarks", "commit", "commits",
+    "diff", "repository", "pr", "pull request", "implementation", "implemented",
+    "refactored", "debugged", "log", "logs", "metric", "metrics", "output",
+    "assert", "mock", "fixture", "fixtures", "schema", "table", "tables",
+    "migration", "migrations", "script", "scripts", "documentation",
+    "docstring", "payload", "pipeline", "router", "model", "models",
+    "boundary", "variables", "64-byte",
+}
+
+SUPERFICIAL_KEYWORDS = {
+    "good", "fine", "nice", "easy", "simple", "read", "reading",
+    "looked at", "watched", "video", "chapter", "book", "done",
+    "finished", "completed everything", "all good", "pretty cool",
+    "think", "everything was", "great", "ok", "okay",
+}
 
 
 def _to_score(val: Any, default: float = 70.0) -> float:
@@ -63,54 +131,28 @@ def _evaluate_mock(
     transcript: str,
     block_topic: str = "",
     block_deliverable: str = "",
-) -> dict[str, Any]:
+) -> VivaEvaluationResult:
     """
     Deterministic structured mock evaluation when GEMINI_API_KEY is unset or unavailable.
     Distinguishes between superficial/vague submissions and substantive technical defenses.
     """
     t_lower = transcript.lower()
-    words = re.findall(r"\w+", t_lower)
-    word_count = len(words)
+    words_list = re.findall(r"\b[a-z0-9_-]+\b", t_lower)
+    words_in_transcript = set(words_list)
+    word_count = len(words_list)
 
-    tech_keywords = {
-        "complexity", "algorithm", "data structure", "memory", "latency",
-        "cache", "concurrency", "thread", "lock", "mutex", "pointer",
-        "reference", "tree", "graph", "hash", "table", "index", "b-tree",
-        "stack", "heap", "queue", "binary", "search", "sort", "recursion",
-        "dynamic programming", "in-memory", "buffer", "protocol", "socket",
-        "network", "tcp", "http", "database", "query", "sql", "transaction",
-        "acid", "isolation", "invariant", "interface", "polymorphism",
-        "inheritance", "asynchronous", "await", "coroutine", "event loop",
-        "profiling", "benchmark", "overhead", "trade-off", "tradeoff",
-        "edge case", "boundary", "null pointer", "overflow", "underflow",
-        "race condition", "deadlock", "idempotent", "serialization",
-        "deserialization", "throughput", "sharding", "replication",
-        "partition", "distributed", "state machine", "byte", "cpu", "io",
-        "runtime", "compilation", "microsecond", "millisecond", "false sharing",
-        "cache line", "synchronization", "telemetry", "regression", "endpoint",
-        "mutual exclusion", "hold and wait", "circular wait", "preemption",
-        "starvation", "semaphore", "paging", "virtual memory", "core", "cores",
+    matched_tech = (words_in_transcript & TECHNICAL_DEPTH_KEYWORDS) | {
+        phrase for phrase in TECHNICAL_DEPTH_KEYWORDS
+        if " " in phrase and re.search(r"\b" + re.escape(phrase) + r"\b", t_lower)
     }
-
-    artifact_keywords = {
-        "code", "function", "method", "class", "module", "file", "test",
-        "unit test", "pytest", "benchmark", "commit", "diff", "repository",
-        "pr", "pull request", "implementation", "implemented", "refactored",
-        "debugged", "log", "metric", "output", "assert", "mock", "fixture",
-        "schema", "table", "migration", "script", "documentation", "docstring",
-        "payload", "pipeline", "router", "model", "boundary", "variables", "64-byte",
+    matched_artifacts = (words_in_transcript & ARTIFACT_KEYWORDS) | {
+        phrase for phrase in ARTIFACT_KEYWORDS
+        if " " in phrase and re.search(r"\b" + re.escape(phrase) + r"\b", t_lower)
     }
-
-    superficial_keywords = {
-        "good", "fine", "nice", "easy", "simple", "read", "reading",
-        "looked at", "watched", "video", "chapter", "book", "done",
-        "finished", "completed everything", "all good", "pretty cool",
-        "think", "everything was", "great", "ok", "okay",
+    matched_superficial = (words_in_transcript & SUPERFICIAL_KEYWORDS) | {
+        phrase for phrase in SUPERFICIAL_KEYWORDS
+        if " " in phrase and re.search(r"\b" + re.escape(phrase) + r"\b", t_lower)
     }
-
-    matched_tech = [k for k in tech_keywords if k in t_lower]
-    matched_artifacts = [k for k in artifact_keywords if k in t_lower]
-    matched_superficial = [k for k in superficial_keywords if k in t_lower]
 
     tech_count = len(matched_tech)
     artifact_count = len(matched_artifacts)
@@ -136,13 +178,13 @@ def _evaluate_mock(
 
     # Calculate alignment score (0.0 to 100.0)
     context_text = f"{block_topic} {block_deliverable}".lower()
-    context_words = set(re.findall(r"\w+", context_text)) - {
+    context_words = set(re.findall(r"\b[a-z0-9_-]+\b", context_text)) - {
         "the", "a", "an", "and", "or", "in", "on", "at", "to", "for", "of",
         "with", "by", "as", "is", "are", "was", "were", "be", "been", "from",
     }
 
     if context_words:
-        overlap = sum(1 for w in context_words if len(w) > 3 and w in t_lower)
+        overlap = sum(1 for w in context_words if len(w) > 3 and w in words_in_transcript)
         if overlap >= 2:
             alignment = min(95.0, 75.0 + (overlap * 5.0))
         elif overlap == 1:
@@ -173,7 +215,7 @@ def _evaluate_mock(
         critique = f"Deterministic mock: Defense failed rubric ({', '.join(reasons)})."
         rejection_reason = "RUBRIC_THRESHOLD_NOT_MET"
 
-    return {
+    return VivaEvaluationResult({
         "passed": passed,
         "security_flag": False,
         "rejection_reason": rejection_reason,
@@ -181,6 +223,7 @@ def _evaluate_mock(
         "artifacts": artifacts,
         "alignment": alignment,
         "composite": composite,
+        "score": composite,
         "critique": critique,
         "scores": {
             "depth": depth,
@@ -188,16 +231,17 @@ def _evaluate_mock(
             "alignment": alignment,
             "composite": composite,
         },
-    }
+    })
 
 
 def _evaluate_with_gemini(
     transcript: str,
     block_topic: str = "",
     block_deliverable: str = "",
-) -> dict[str, Any]:
+) -> VivaEvaluationResult:
     """Invokes Gemini JSON mode for structured viva evaluation."""
-    if _client is None:
+    client = get_gemini_client()
+    if client is None:
         return _evaluate_mock(transcript, block_topic, block_deliverable)
 
     prompt = (
@@ -221,7 +265,7 @@ def _evaluate_with_gemini(
     )
 
     try:
-        response = _client.models.generate_content(
+        response = client.models.generate_content(
             model=_MODEL,
             contents=prompt,
             config=genai_types.GenerateContentConfig(
@@ -247,7 +291,7 @@ def _evaluate_with_gemini(
         composite = round((depth * 0.4) + (artifacts * 0.4) + (alignment * 0.2), 2)
         passed = bool(composite >= 70.0 and depth >= 60.0 and artifacts >= 60.0)
 
-        return {
+        return VivaEvaluationResult({
             "passed": passed,
             "security_flag": False,
             "rejection_reason": None if passed else "RUBRIC_THRESHOLD_NOT_MET",
@@ -255,6 +299,7 @@ def _evaluate_with_gemini(
             "artifacts": artifacts,
             "alignment": alignment,
             "composite": composite,
+            "score": composite,
             "critique": critique or ("Passed viva defense." if passed else "Failed rubric thresholds."),
             "scores": {
                 "depth": depth,
@@ -262,7 +307,7 @@ def _evaluate_with_gemini(
                 "alignment": alignment,
                 "composite": composite,
             },
-        }
+        })
     except Exception as exc:
         logger.warning("Gemini JSON viva evaluation error, falling back to deterministic mock: %s", exc)
         return _evaluate_mock(transcript, block_topic, block_deliverable)
@@ -272,15 +317,15 @@ def evaluate_viva_defense(
     transcript: str,
     block_topic: str = "",
     block_deliverable: str = "",
-) -> dict[str, Any]:
+) -> VivaEvaluationResult:
     """
     Evaluates an oral viva defense transcript with pre-flight screening and rubric invariants.
-    
+
     Pre-flight checks:
     1. Pattern screening: Screen transcripts using regex patterns for injection tokens.
        If matched, returns failed evaluation with security_flag=True and rejection_reason='PROMPT_INJECTION_FLAGGED'.
     2. Length check: Reject transcripts under 60 characters with code 'TRANSCRIPT_TOO_SHORT'.
-    
+
     Rubric invariant:
     composite = (depth * 0.4) + (artifacts * 0.4) + (alignment * 0.2)
     Require composite >= 70.0 and depth >= 60.0 and artifacts >= 60.0 to set passed=True.
@@ -290,7 +335,7 @@ def evaluate_viva_defense(
     # 1. Pattern screening (Regex injection check)
     for pattern in INJECTION_PATTERNS:
         if pattern.search(text):
-            return {
+            return VivaEvaluationResult({
                 "passed": False,
                 "security_flag": True,
                 "rejection_reason": "PROMPT_INJECTION_FLAGGED",
@@ -298,6 +343,7 @@ def evaluate_viva_defense(
                 "artifacts": 0.0,
                 "alignment": 0.0,
                 "composite": 0.0,
+                "score": 0.0,
                 "critique": "Potential prompt injection or instruction override token detected in defense transcript.",
                 "scores": {
                     "depth": 0.0,
@@ -305,11 +351,11 @@ def evaluate_viva_defense(
                     "alignment": 0.0,
                     "composite": 0.0,
                 },
-            }
+            })
 
     # 2. Length check (< 60 chars)
     if len(text) < 60:
-        return {
+        return VivaEvaluationResult({
             "passed": False,
             "security_flag": False,
             "rejection_reason": "TRANSCRIPT_TOO_SHORT",
@@ -317,6 +363,7 @@ def evaluate_viva_defense(
             "artifacts": 0.0,
             "alignment": 0.0,
             "composite": 0.0,
+            "score": 0.0,
             "critique": "Transcript too short. Minimum 60 characters required for oral defense evaluation.",
             "scores": {
                 "depth": 0.0,
@@ -324,11 +371,12 @@ def evaluate_viva_defense(
                 "alignment": 0.0,
                 "composite": 0.0,
             },
-        }
+        })
 
     # 3. Evaluation logic: Gemini JSON mode when GEMINI_API_KEY is present, or deterministic mock
-    api_key = os.getenv("GEMINI_API_KEY", "")
-    if api_key and api_key != "<YOUR_GEMINI_API_KEY>":
+    client = get_gemini_client()
+    if client is not None:
         return _evaluate_with_gemini(text, block_topic, block_deliverable)
     else:
         return _evaluate_mock(text, block_topic, block_deliverable)
+
