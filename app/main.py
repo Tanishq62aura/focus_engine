@@ -31,6 +31,7 @@ from app.auth import (
     jwt,
 )
 from app.database import Base, engine, get_db, init_db
+from app.middleware.idempotency import IdempotencyMiddleware
 from app.verification import audit_excuse_with_ai, evaluate_viva_answer, generate_viva_question
 from app.watchdogs.git_guard import check_workspace_activity, verify_workspace_activity
 
@@ -111,6 +112,8 @@ app = FastAPI(
     description="Behavioral execution & accountability system with Supabase & Google OAuth",
     version="2.0.0",
 )
+
+app.add_middleware(IdempotencyMiddleware)
 
 
 @app.api_route("/healthz", methods=["GET", "HEAD"], tags=["Monitoring"])

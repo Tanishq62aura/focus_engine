@@ -93,6 +93,15 @@ def init_db():
                     ALTER TABLE focus_sessions ADD COLUMN IF NOT EXISTS heartbeat_violation_count INTEGER DEFAULT 0;
                     ALTER TABLE focus_sessions ADD COLUMN IF NOT EXISTS drift_seconds INTEGER DEFAULT 0;
                     ALTER TABLE focus_sessions ALTER COLUMN task_id DROP NOT NULL;
+                    CREATE TABLE IF NOT EXISTS idempotency_records (
+                        key VARCHAR(64) PRIMARY KEY,
+                        user_id VARCHAR(64),
+                        status_code INTEGER NOT NULL,
+                        response_body TEXT NOT NULL,
+                        created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW() NOT NULL
+                    );
+                    CREATE INDEX IF NOT EXISTS ix_idempotency_records_key ON idempotency_records (key);
+                    CREATE INDEX IF NOT EXISTS ix_idempotency_records_user_id ON idempotency_records (user_id);
                 """))
                 conn.commit()
             except Exception:
@@ -202,6 +211,20 @@ def init_db():
                             conn.execute(text(f"ALTER TABLE user_settings ADD COLUMN {cname} {cdef}"))
                         except Exception:
                             pass
+            try:
+                conn.execute(text("""
+                    CREATE TABLE IF NOT EXISTS idempotency_records (
+                        key VARCHAR(64) PRIMARY KEY,
+                        user_id VARCHAR(64),
+                        status_code INTEGER NOT NULL,
+                        response_body TEXT NOT NULL,
+                        created_at DATETIME NOT NULL
+                    )
+                """))
+                conn.execute(text("CREATE INDEX IF NOT EXISTS ix_idempotency_records_key ON idempotency_records (key)"))
+                conn.execute(text("CREATE INDEX IF NOT EXISTS ix_idempotency_records_user_id ON idempotency_records (user_id)"))
+            except Exception:
+                pass
             conn.commit()
 
 

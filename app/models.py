@@ -434,3 +434,17 @@ class User(Base):
     encrypted_password = Column(String(255), nullable=True)
     created_at = Column(DateTime(timezone=True), default=_utcnow, nullable=False)
 
+
+# ---------------------------------------------------------------------------
+# IdempotencyRecord
+# ---------------------------------------------------------------------------
+class IdempotencyRecord(Base):
+    __tablename__ = "idempotency_records"
+
+    key = Column(String(64), primary_key=True, index=True)
+    user_id = Column(String(64), nullable=True, index=True)
+    status_code = Column(Integer, nullable=False)
+    response_body = Column(Text, nullable=False)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
+
+
