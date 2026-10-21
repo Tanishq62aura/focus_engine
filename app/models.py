@@ -416,8 +416,21 @@ class SessionHeartbeat(Base):
     )
     source = Column(String(20), nullable=False)  # "vscode" | "chrome"
     event_type = Column(String(50), nullable=False)  # "keystroke", "tab_active", "focus_lost"
-    timestamp = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
+    timestamp = Column(DateTime(timezone=True), default=_utcnow, nullable=False, index=True)
     is_on_task = Column(Boolean, default=True, nullable=False)
     metadata_payload = Column(JSON, nullable=True)
 
     session = relationship("FocusSession", back_populates="heartbeats")
+
+
+# ---------------------------------------------------------------------------
+# User (Local / SQLite compatibility)
+# ---------------------------------------------------------------------------
+class User(Base):
+    __tablename__ = "users"
+
+    id = Column(String(64), primary_key=True, default=_new_uuid)
+    email = Column(String(255), unique=True, index=True, nullable=False)
+    encrypted_password = Column(String(255), nullable=True)
+    created_at = Column(DateTime(timezone=True), default=_utcnow, nullable=False)
+

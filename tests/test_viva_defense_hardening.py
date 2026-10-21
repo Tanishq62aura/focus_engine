@@ -5,7 +5,7 @@ prompt injection detection, rubric evaluation, and route idempotency.
 """
 import sys
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, time, timezone
 from pathlib import Path
 
 # Ensure project root is on sys.path
@@ -237,8 +237,8 @@ def test_verify_viva_route_idempotency_guard(client, db):
         timetable_id=tt.id,
         day_number=1,
         target_date=now.date(),
-        window_start=now.time(),
-        window_deadline=now.time(),
+        window_start=time(19, 0),
+        window_deadline=time(21, 0),
         duration_minutes=60,
         topic="Idempotency Test Topic",
         deliverable_spec="Idempotency Unit Test",
@@ -286,8 +286,8 @@ def test_verify_viva_route_injection_rejection(client, db):
         timetable_id=tt.id,
         day_number=1,
         target_date=now.date(),
-        window_start=now.time(),
-        window_deadline=now.time(),
+        window_start=time(19, 0),
+        window_deadline=time(21, 0),
         duration_minutes=60,
         topic="Injection Test Topic",
         deliverable_spec="Injection Defense",
@@ -342,8 +342,8 @@ def test_payload_override_resistance(client, db):
         timetable_id=tt.id,
         day_number=1,
         target_date=now.date(),
-        window_start=now.time(),
-        window_deadline=now.time(),
+        window_start=time(19, 0),
+        window_deadline=time(21, 0),
         duration_minutes=60,
         topic="Consensus Algorithms",
         deliverable_spec="Raft Leader Election",
@@ -376,8 +376,8 @@ def test_payload_override_resistance(client, db):
         timetable_id=tt.id,
         day_number=2,
         target_date=now.date(),
-        window_start=now.time(),
-        window_deadline=now.time(),
+        window_start=time(19, 0),
+        window_deadline=time(21, 0),
         duration_minutes=60,
         topic="Consensus Algorithms",
         deliverable_spec="Raft Leader Election",
@@ -471,4 +471,93 @@ def test_lazy_gemini_client_getter():
     api_key = os.getenv("GEMINI_API_KEY")
     if not api_key or api_key == "<YOUR_GEMINI_API_KEY>":
         assert client is None
+
+
+# ===========================================================================
+# TEST 11: Viva Direct Completion Backdoor Blocked
+# ===========================================================================
+def test_viva_backdoor_blocked(client, db):
+    """
+    Direct block completion without oral viva verification is disabled
+    and MUST return HTTP 400 Bad Request.
+    """
+    res = client.post("/api/timetables/blocks/999/complete", json={"passed": True})
+    assert res.status_code == 400
+    detail = res.json().get("detail", "")
+    assert "Direct block completion without oral viva verification is disabled" in detail
+    assert "POST /api/support/verify-viva" in detail
+
+
+# ===========================================================================
+# TEST 12: Cross-Midnight Study Window Rescheduling
+# ===========================================================================
+def test_cross_midnight_rescheduling(client, db):
+    """
+    Rescheduling must tolerate windows crossing midnight (e.g. 23:00 to 01:00)
+    and calculate duration correctly (120 minutes), while rejecting windows <15m or >720m.
+    """
+    now = datetime.now(timezone.utc)
+    db.query(StudyTimetable).filter(StudyTimetable.user_id == TEST_USER_ID, StudyTimetable.status == "ACTIVE").update({"status": "ARCHIVED"})
+    db.commit()
+
+    tt = StudyTimetable(
+        user_id=TEST_USER_ID,
+        title="Test Cross Midnight Timetable",
+        track_id="coding",
+        total_days=1,
+        status="ACTIVE",
+    )
+    db.add(tt)
+    db.commit()
+    db.refresh(tt)
+
+    block = TimetableBlock(
+        timetable_id=tt.id,
+        day_number=1,
+        target_date=now.date(),
+        window_start=time(19, 0),
+        window_deadline=time(21, 0),
+        duration_minutes=60,
+        topic="Cross Midnight Review",
+        deliverable_spec="Late night session",
+        verification_rules="Automated tests",
+        status="PENDING",
+    )
+    db.add(block)
+    db.commit()
+    db.refresh(block)
+
+    # Valid cross-midnight window (23:00 to 01:00 -> 120 minutes)
+    payload_valid = {
+        "shift_days": 0,
+        "block_adjustments": [
+            {
+                "block_id": block.id,
+                "new_window_start": "23:00",
+                "new_window_deadline": "01:00",
+            }
+        ],
+    }
+    res_valid = client.patch("/api/timetables/active/reschedule", json=payload_valid)
+    assert res_valid.status_code == 200, f"Expected 200, got: {res_valid.text}"
+    db.expire_all()
+    reloaded_block = db.get(TimetableBlock, block.id)
+    assert reloaded_block.window_start.strftime("%H:%M") == "23:00"
+    assert reloaded_block.window_deadline.strftime("%H:%M") == "01:00"
+
+    # Too short window (<15 minutes)
+    payload_short = {
+        "shift_days": 0,
+        "block_adjustments": [
+            {
+                "block_id": block.id,
+                "new_window_start": "23:00",
+                "new_window_deadline": "23:05",
+            }
+        ],
+    }
+    res_short = client.patch("/api/timetables/active/reschedule", json=payload_short)
+    assert res_short.status_code == 400
+    assert "between 15 minutes and 12 hours" in res_short.json().get("detail", "")
+
 

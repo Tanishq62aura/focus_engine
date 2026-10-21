@@ -158,10 +158,24 @@ def apply_timetable_reschedule(
             eff_start = adj.new_window_start if adj.new_window_start is not None else target_b.window_start
             eff_deadline = adj.new_window_deadline if adj.new_window_deadline is not None else target_b.window_deadline
 
-            if eff_start >= eff_deadline:
+            # Convert string HH:MM or datetime.time to minute offsets from midnight
+            def to_minutes(t_val) -> int:
+                if isinstance(t_val, str):
+                    h, m = map(int, t_val.split(":")[:2])
+                elif hasattr(t_val, "hour") and hasattr(t_val, "minute"):
+                    h, m = t_val.hour, t_val.minute
+                else:
+                    h, m = map(int, str(t_val).split(":")[:2])
+                return h * 60 + m
+
+            start_min = to_minutes(eff_start)
+            deadline_min = to_minutes(eff_deadline)
+            duration_min = (deadline_min - start_min) if deadline_min > start_min else (deadline_min + 1440 - start_min)
+
+            if duration_min < 15 or duration_min > 720:
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
-                    detail=f"Invalid time window for Day {target_b.day_number}: window_start ({eff_start}) must be earlier than window_deadline ({eff_deadline}).",
+                    detail="Study window duration must be between 15 minutes and 12 hours",
                 )
 
             if adj.new_window_start is not None:
@@ -355,125 +369,11 @@ def start_block_session(
     }
 
 
-class BlockCompletePayload(BaseModel):
-    session_id: Optional[str] = None
-    passed: bool = True
-
-
 @router.post("/blocks/{block_id}/complete")
-def complete_block_endpoint(
-    block_id: int,
-    payload: Optional[BlockCompletePayload] = None,
-    db: Session = Depends(get_db),
-    current_user=Depends(get_current_user),
-):
-    """
-    Atomically marks a timetable block and its active session as COMPLETED and verified.
-    """
-    user_id = _get_user_id(current_user)
-    block = (
-        db.query(TimetableBlock)
-        .join(StudyTimetable)
-        .filter(
-            TimetableBlock.id == block_id,
-            StudyTimetable.user_id == user_id,
-        )
-        .first()
+def complete_block_deprecated(block_id: int, payload: Optional[Any] = None):
+    raise HTTPException(
+        status_code=status.HTTP_400_BAD_REQUEST,
+        detail="Direct block completion without oral viva verification is disabled. Use POST /api/support/verify-viva.",
     )
-    if not block:
-        raise HTTPException(status_code=404, detail="Block not found")
 
-    now_utc = datetime.utcnow()
-    block.status = "COMPLETED"
-    block.actual_completed_at = now_utc
-
-    # Query active StudySession for current_user where status in ['IN_PROGRESS', 'ACTIVE']
-    session = None
-    req_session_id = payload.session_id if payload else None
-    if req_session_id:
-        session = (
-            db.query(FocusSession)
-            .filter(FocusSession.id == req_session_id, FocusSession.user_id == user_id)
-            .first()
-        )
-    if not session:
-        session = (
-            db.query(FocusSession)
-            .filter(
-                FocusSession.user_id == user_id,
-                FocusSession.timetable_block_id == block.id,
-                FocusSession.status.in_(["IN_PROGRESS", "ACTIVE"]),
-            )
-            .first()
-        )
-    if not session and block.task_id:
-        session = (
-            db.query(FocusSession)
-            .filter(
-                FocusSession.user_id == user_id,
-                FocusSession.task_id == block.task_id,
-                FocusSession.status.in_(["IN_PROGRESS", "ACTIVE"]),
-            )
-            .first()
-        )
-    if not session:
-        session = (
-            db.query(FocusSession)
-            .filter(
-                FocusSession.user_id == user_id,
-                FocusSession.status.in_(["IN_PROGRESS", "ACTIVE"]),
-            )
-            .order_by(FocusSession.started_at.desc())
-            .first()
-        )
-    if not session:
-        session = crud.get_active_session(db, user_id=user_id)
-
-    if session:
-        session.is_verified = True
-        session.status = "COMPLETED"
-        session.end_time = now_utc
-        if not session.start_time:
-            session.start_time = now_utc - timedelta(minutes=1)
-        st = session.start_time
-        et = session.end_time
-        if st.tzinfo is None and et.tzinfo is not None:
-            st = st.replace(tzinfo=timezone.utc)
-        elif st.tzinfo is not None and et.tzinfo is None:
-            et = et.replace(tzinfo=timezone.utc)
-        session.duration_minutes = max(1, int((et - st).total_seconds() / 60))
-        session.verified_minutes = session.duration_minutes
-        session.timetable_block_id = block.id
-
-    timetable = (
-        db.query(StudyTimetable)
-        .filter(StudyTimetable.id == block.timetable_id)
-        .first()
-    )
-    if timetable:
-        remaining = (
-            db.query(TimetableBlock)
-            .filter(
-                TimetableBlock.timetable_id == timetable.id,
-                TimetableBlock.id != block.id,
-                TimetableBlock.status != "COMPLETED",
-            )
-            .count()
-        )
-        if remaining == 0:
-            timetable.status = "COMPLETED"
-
-    # Single atomic transaction commit
-    db.commit()
-    if session:
-        db.refresh(session)
-    db.refresh(block)
-
-    return {
-        "status": "COMPLETED",
-        "block_id": block.id,
-        "session_id": session.id if session else None,
-        "actual_completed_at": block.actual_completed_at,
-        "verified": True,
-    }
 

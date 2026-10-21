@@ -1,12 +1,13 @@
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional, Literal
 from pydantic import BaseModel, Field
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
+from app.auth import get_current_user
 from app.database import get_db
-from app.models import FocusSession, SessionHeartbeat
+from app.models import FocusSession, SessionHeartbeat, User
 
 router = APIRouter(prefix="/api/telemetry", tags=["telemetry"])
 
@@ -31,22 +32,20 @@ class HeartbeatResponse(BaseModel):
     message: str
 
 
-def get_current_user_dev():
-    return "dev-user"
-
-
 @router.post("/heartbeat", response_model=HeartbeatResponse)
 def record_heartbeat(
     payload: HeartbeatPayload,
     db: Session = Depends(get_db),
-    current_user: str = Depends(get_current_user_dev)
+    current_user = Depends(get_current_user)
 ):
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
+    # Extract string user ID whether current_user is a dict, model, or string
+    user_id = current_user.id if hasattr(current_user, "id") else (current_user.get("id") if isinstance(current_user, dict) else str(current_user))
 
-    # 1. Fetch active session bound to user
+    # Fetch active session strictly bound to authenticated user
     session = db.query(FocusSession).filter(
         FocusSession.id == payload.session_id,
-        FocusSession.user_id == current_user,
+        FocusSession.user_id == user_id,
         FocusSession.ended_at.is_(None),
         FocusSession.status.in_(["IN_PROGRESS", "ACTIVE"])
     ).first()

@@ -1,5 +1,5 @@
 import sys
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 import uuid
 import pytest
@@ -31,7 +31,7 @@ def test_heartbeat_lifecycle_and_auto_abort(setup_db):
             id=session_id,
             user_id=test_user,
             status="IN_PROGRESS",
-            created_at=datetime.utcnow(),
+            created_at=datetime.now(timezone.utc),
             heartbeat_violation_count=0
         )
         db.add(sess)

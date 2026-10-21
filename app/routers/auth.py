@@ -14,10 +14,11 @@ from typing import Optional
 import bcrypt
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials
-from sqlalchemy import text
+from sqlalchemy import func, text
 from sqlalchemy.orm import Session
 
 from app import schemas
+from app.models import User
 from app.auth import (
     AUTH_DISABLED,
     DEV_USER_ID,
@@ -99,58 +100,85 @@ def signup(data: schemas.AuthRequest, db: Session = Depends(get_db)):
         except Exception as e:
             logger.info("Supabase client sign_up failed (%s), using direct database sync.", e)
 
-    # 2. Direct Supabase PostgreSQL Auth Synchronization
-    try:
-        # Check if user already exists
-        existing = db.execute(
-            text("SELECT id FROM auth.users WHERE lower(email) = :email"),
-            {"email": email},
-        ).fetchone()
+    # 2. Database Auth Synchronization (Dialect-Aware)
+    if AUTH_DISABLED:
+        token = _generate_jwt(DEV_USER_ID, email)
+        return schemas.AuthResponse(access_token=token, user_id=DEV_USER_ID, email=email)
 
+    is_sqlite = (db.bind.dialect.name == "sqlite") if db.bind else True
+
+    if is_sqlite:
+        existing = db.query(User).filter(func.lower(User.email) == email).first()
         if existing:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="An account with this email address already exists. Please sign in.",
             )
-
         user_id = str(uuid.uuid4())
         hashed_password = bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
         now = datetime.now(timezone.utc)
-
-        db.execute(
-            text("""
-                INSERT INTO auth.users (
-                    id, aud, role, email, encrypted_password, 
-                    email_confirmed_at, created_at, updated_at, 
-                    raw_app_meta_data, raw_user_meta_data
-                ) VALUES (
-                    :id, 'authenticated', 'authenticated', :email, :password, 
-                    :now, :now, :now, 
-                    '{"provider":"email","providers":["email"]}', '{}'
-                )
-            """),
-            {
-                "id": user_id,
-                "email": email,
-                "password": hashed_password,
-                "now": now,
-            },
+        new_user = User(
+            id=user_id,
+            email=email,
+            encrypted_password=hashed_password,
+            created_at=now,
         )
+        db.add(new_user)
         db.commit()
-
         token = _generate_jwt(user_id, email)
-        logger.info("Clean-slate user registered: email=%s, user_id=%s", email, user_id)
         return schemas.AuthResponse(access_token=token, user_id=user_id, email=email)
+    else:
+        try:
+            # Check if user already exists
+            existing = db.execute(
+                text("SELECT id FROM auth.users WHERE lower(email) = :email"),
+                {"email": email},
+            ).fetchone()
 
-    except HTTPException:
-        raise
-    except Exception as e:
-        db.rollback()
-        logger.exception("Failed to register user in Supabase auth: %s", e)
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Database authentication error: {str(e)}",
-        )
+            if existing:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="An account with this email address already exists. Please sign in.",
+                )
+
+            user_id = str(uuid.uuid4())
+            hashed_password = bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
+            now = datetime.now(timezone.utc)
+
+            db.execute(
+                text("""
+                    INSERT INTO auth.users (
+                        id, aud, role, email, encrypted_password, 
+                        email_confirmed_at, created_at, updated_at, 
+                        raw_app_meta_data, raw_user_meta_data
+                    ) VALUES (
+                        :id, 'authenticated', 'authenticated', :email, :password, 
+                        :now, :now, :now, 
+                        '{"provider":"email","providers":["email"]}', '{}'
+                    )
+                """),
+                {
+                    "id": user_id,
+                    "email": email,
+                    "password": hashed_password,
+                    "now": now,
+                },
+            )
+            db.commit()
+
+            token = _generate_jwt(user_id, email)
+            logger.info("Clean-slate user registered: email=%s, user_id=%s", email, user_id)
+            return schemas.AuthResponse(access_token=token, user_id=user_id, email=email)
+
+        except HTTPException:
+            raise
+        except Exception as e:
+            db.rollback()
+            logger.exception("Failed to register user in Supabase auth: %s", e)
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Database authentication error: {str(e)}",
+            )
 
 
 @router.post("/login", response_model=schemas.AuthResponse)
@@ -172,42 +200,67 @@ def login(data: schemas.AuthRequest, db: Session = Depends(get_db)):
         except Exception as e:
             logger.info("Supabase client sign_in failed (%s), using direct database sync.", e)
 
-    # 2. Direct Supabase PostgreSQL Auth Synchronization
-    try:
-        row = db.execute(
-            text("SELECT id, encrypted_password FROM auth.users WHERE lower(email) = :email"),
-            {"email": email},
-        ).fetchone()
+    # 2. Database Auth Synchronization (Dialect-Aware)
+    if AUTH_DISABLED:
+        token = _generate_jwt(DEV_USER_ID, email)
+        return schemas.AuthResponse(access_token=token, user_id=DEV_USER_ID, email=email)
 
-        if not row or not row[1]:
+    is_sqlite = (db.bind.dialect.name == "sqlite") if db.bind else True
+
+    if is_sqlite:
+        user = db.query(User).filter(func.lower(User.email) == email).first()
+        if not user or not user.encrypted_password:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Invalid email or password.",
                 headers={"WWW-Authenticate": "Bearer"},
             )
 
-        user_id = str(row[0])
-        encrypted_password = str(row[1])
-
-        # Verify bcrypt hash
-        if not bcrypt.checkpw(password.encode("utf-8"), encrypted_password.encode("utf-8")):
+        if not bcrypt.checkpw(password.encode("utf-8"), user.encrypted_password.encode("utf-8")):
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Invalid email or password.",
                 headers={"WWW-Authenticate": "Bearer"},
             )
 
-        token = _generate_jwt(user_id, email)
-        return schemas.AuthResponse(access_token=token, user_id=user_id, email=email)
+        token = _generate_jwt(user.id, email)
+        return schemas.AuthResponse(access_token=token, user_id=user.id, email=email)
+    else:
+        try:
+            row = db.execute(
+                text("SELECT id, encrypted_password FROM auth.users WHERE lower(email) = :email"),
+                {"email": email},
+            ).fetchone()
 
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.exception("Failed to authenticate user: %s", e)
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Authentication failed due to server error.",
-        )
+            if not row or not row[1]:
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail="Invalid email or password.",
+                    headers={"WWW-Authenticate": "Bearer"},
+                )
+
+            user_id = str(row[0])
+            encrypted_password = str(row[1])
+
+            # Verify bcrypt hash
+            if not bcrypt.checkpw(password.encode("utf-8"), encrypted_password.encode("utf-8")):
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail="Invalid email or password.",
+                    headers={"WWW-Authenticate": "Bearer"},
+                )
+
+            token = _generate_jwt(user_id, email)
+            return schemas.AuthResponse(access_token=token, user_id=user_id, email=email)
+
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.exception("Failed to authenticate user: %s", e)
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Authentication failed due to server error.",
+            )
 
 
 @router.get("/status")

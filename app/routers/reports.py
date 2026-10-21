@@ -208,7 +208,7 @@ def get_streak_report(
                 continue
             counts_by_date[ds] = counts_by_date.get(ds, 0) + 1
 
-    now_date = datetime.utcnow().date()
+    now_date = datetime.now(timezone.utc).date()
     today_str = now_date.strftime("%Y-%m-%d")
 
     # today_verified_blocks must count blocks completed today:
@@ -436,7 +436,7 @@ def get_daily_scorecard(
     if date:
         if isinstance(date, str):
             if date.lower() in ("today", "now"):
-                target_date = datetime.utcnow().date()
+                target_date = datetime.now(timezone.utc).date()
             else:
                 try:
                     target_date = datetime.strptime(date, "%Y-%m-%d").date()
@@ -445,7 +445,7 @@ def get_daily_scorecard(
         else:
             target_date = date
     else:
-        target_date = datetime.utcnow().date()
+        target_date = datetime.now(timezone.utc).date()
 
     scorecard = calculate_daily_scorecard(db, current_user, target_date)
     return schemas.DailyScorecardResponse(**scorecard)

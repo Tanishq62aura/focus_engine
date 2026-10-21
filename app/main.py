@@ -162,18 +162,10 @@ if _STATIC_DIR.exists():
 # Mount API routers
 app.include_router(auth.router, prefix="/api/auth", tags=["auth"])
 app.include_router(settings.router, prefix="/api/settings", tags=["settings"])
-app.include_router(settings.router, prefix="/settings", tags=["settings"])
 app.include_router(support.router, prefix="/api/support", tags=["support"])
-app.include_router(support.router, prefix="/api", tags=["support"])
-app.include_router(support.router, tags=["support"])
 app.include_router(reports.router, prefix="/api/reports", tags=["reports"])
-app.include_router(reports.router, prefix="/reports", tags=["reports"])
-app.include_router(reports.router, prefix="/api", tags=["reports"])
-app.include_router(reports.router, tags=["reports"])
 app.include_router(sessions.router, prefix="/api", tags=["sessions"])
-app.include_router(sessions.router, tags=["sessions"])
 app.include_router(timetables.router, prefix="/api/timetables", tags=["timetables"])
-app.include_router(timetables.router, prefix="/api", tags=["timetables"])
 app.include_router(telemetry.router)
 
 
