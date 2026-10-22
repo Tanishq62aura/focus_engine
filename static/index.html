@@ -238,15 +238,15 @@
           <span class="hidden sm:inline">Sign in with Google</span>
         </button>
         <button id="btn-quick-dev" onclick="quickDevLogin()" class="px-2.5 py-1.5 text-xs font-mono font-semibold rounded bg-zinc-800 text-zinc-200 border border-zinc-700 hover:bg-zinc-700 flex items-center gap-1.5"><svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg><span>Dev</span></button>
+        <button id="btn-settings-toggle" onclick="openSettingsDrawer()" class="flex items-center gap-1.5 text-zinc-400 hover:text-white transition-colors text-xs px-2.5 py-1.5 rounded-lg hover:bg-zinc-800 border border-zinc-800 hover:border-zinc-700 cursor-pointer" title="Settings & Telemetry">
+          <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="3"/>
+            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+          </svg>
+          <span class="inline">Settings</span>
+        </button>
         <button id="btn-logout" onclick="logout()" class="hidden text-zinc-400 hover:text-rose-400 text-xs px-2.5 py-1.5 rounded-lg hover:bg-zinc-800 transition">
           Sign Out
-        </button>
-        <button id="btn-open-settings" onclick="openSettingsDrawer()" class="hidden md:flex text-zinc-400 hover:text-zinc-100 transition text-xs px-2.5 py-1.5 rounded-lg hover:bg-zinc-800 items-center gap-1.5 border border-zinc-800 hover:border-zinc-700" title="Study Tracks & Engine Settings">
-          <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-            <line x1="4" x2="20" y1="21" y2="21"/><line x1="4" x2="20" y1="14" y2="14"/><line x1="4" x2="20" y1="7" y2="7"/>
-            <circle cx="8" cy="21" r="2"/><circle cx="16" cy="14" r="2"/><circle cx="10" cy="7" r="2"/>
-          </svg>
-          <span>Tracks & Settings</span>
         </button>
         <button id="btn-refresh-stats" onclick="loadStats()" class="text-zinc-400 hover:text-zinc-100 transition text-xs px-2.5 py-1.5 rounded-lg hover:bg-zinc-800 flex items-center gap-1.5">
           <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
