@@ -23,6 +23,7 @@
 const BROWSER_SOURCE = navigator.userAgent.includes("Edg/") ? "edge" : "chrome";
 const ALARM_NAME = "telemetry_heartbeat";
 const HEARTBEAT_PERIOD_MINUTES = 0.5; // 30 seconds
+const FALLBACK_ICON = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=";
 
 // ---------------------------------------------------------------------------
 // 2. Alarm Lifecycle Registration (Startup & Install)
@@ -112,12 +113,16 @@ function setBadge(text, color) {
 function notifyUser(id, title, message) {
   try {
     if (chrome.notifications?.create) {
-      chrome.notifications.create(id || `fe_notice_${Date.now()}`, {
-        type: "basic",
-        iconUrl: "icons/icon48.png",
-        title: title || "Focus Engine",
-        message: message,
-        priority: 2,
+      Promise.resolve(
+        chrome.notifications.create(id || `fe_notice_${Date.now()}`, {
+          type: "basic",
+          iconUrl: FALLBACK_ICON,
+          title: title || "Focus Engine",
+          message: message,
+          priority: 2,
+        })
+      ).catch((err) => {
+        console.debug("[FocusEngine] Notification suppressed:", err);
       });
     }
   } catch (err) {

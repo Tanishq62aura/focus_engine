@@ -250,4 +250,7 @@ def test_content_script_no_alarms_reference_and_background_message_handling():
         assert "FOCUS_ENGINE_CLEAR" in code
         assert "chrome.alarms.create" in code
         assert "chrome.alarms.clear" in code
+        assert "FALLBACK_ICON" in code
+        assert "data:image/png;base64" in code
+        assert "Notification suppressed" in code
 
