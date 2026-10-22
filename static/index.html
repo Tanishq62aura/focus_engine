@@ -2579,9 +2579,7 @@
       }
 
       startTimer();
-      if (!pastePollInterval) {
-        pastePollInterval = setInterval(pollPasteFlag, 5000);
-      }
+      pollPasteFlag(activeSessionId);
       if (typeof soundscapeEngine !== 'undefined') {
         soundscapeEngine.onSessionStateChanged('active');
       }
@@ -3137,9 +3135,9 @@
       initMobileNav();
       initModalTouchGestures();
 
-      // Poll for paste flags every 5s when a session is active
-      if (!pastePollInterval) {
-        pastePollInterval = setInterval(pollPasteFlag, 5000);
+      // Poll for paste flags when an active session is loaded
+      if (activeSessionId) {
+        pollPasteFlag(activeSessionId);
       }
     });
 
@@ -3604,9 +3602,7 @@
         }
 
         startTimer();
-        if (!pastePollInterval) {
-          pastePollInterval = setInterval(pollPasteFlag, 5000);
-        }
+        pollPasteFlag(activeSessionId);
         if (typeof soundscapeEngine !== 'undefined') {
           soundscapeEngine.onSessionStateChanged('active');
         }
@@ -3748,6 +3744,10 @@
     }
 
     function resetHUD() {
+      if (window.pastePollInterval) {
+        clearInterval(window.pastePollInterval);
+        window.pastePollInterval = null;
+      }
       if (pastePollInterval) {
         clearInterval(pastePollInterval);
         pastePollInterval = null;
@@ -3832,29 +3832,44 @@
     // ---------------------------------------------------------------
     // Paste flag polling
     // ---------------------------------------------------------------
-    async function pollPasteFlag() {
-      if (!activeSessionId || pasteWarningShown) return;
-      // Check session state for paste flag using authenticated api helper
-      try {
-        const r = await api('GET', `/sessions/${activeSessionId}`);
-        if (r && r.pasted_burst_detected && !pasteWarningShown) {
-          pasteWarningShown = true;
-          document.getElementById('paste-warning').classList.remove('hidden');
-          toast('Paste burst flagged by VS Code watchdog!', 'warning');
-        }
-      } catch (err) {
-        const status = err && err.status;
-        const msg = (err && err.message) || '';
-        // If 401 Unauthorized or 404 Not Found, cancel interval to halt infinite polling
-        if (status === 401 || status === 404 || /401|404|Authentication required|Not Found/i.test(msg)) {
-          if (pastePollInterval) {
-            clearInterval(pastePollInterval);
-            pastePollInterval = null;
-          }
-          try { localStorage.removeItem('active_session_id'); } catch (_) {}
-          activeSessionId = null;
-        }
+    function pollPasteFlag(sessionId) {
+      if (window.pastePollInterval) {
+        clearInterval(window.pastePollInterval);
+        window.pastePollInterval = null;
       }
+      if (typeof pastePollInterval !== 'undefined' && pastePollInterval) {
+        clearInterval(pastePollInterval);
+        pastePollInterval = null;
+      }
+
+      const sid = sessionId || activeSessionId || localStorage.getItem('active_session_id');
+      if (!sid) {
+        return;
+      }
+
+      window.pastePollInterval = setInterval(async () => {
+        try {
+          const res = await api("GET", `/sessions/${sid}`);
+          if (res && (res.pasted_burst_detected || res.paste_flag_active) && !pasteWarningShown) {
+            pasteWarningShown = true;
+            const pw = document.getElementById('paste-warning');
+            if (pw) pw.classList.remove('hidden');
+            toast('Paste burst flagged by VS Code watchdog!', 'warning');
+          }
+        } catch (err) {
+          if (err.status === 404 || (err.message && err.message.includes("404"))) {
+            console.warn(`[HUD] Session ${sid} ended (404). Halting poller.`);
+            clearInterval(window.pastePollInterval);
+            window.pastePollInterval = null;
+            if (typeof pastePollInterval !== 'undefined') {
+              pastePollInterval = null;
+            }
+            try { localStorage.removeItem('active_session_id'); } catch (_) {}
+            activeSessionId = null;
+          }
+        }
+      }, 5000);
+      pastePollInterval = window.pastePollInterval;
     }
 
     // ---------------------------------------------------------------
