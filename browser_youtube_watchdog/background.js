@@ -74,19 +74,19 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       activeSessionId: message.sessionId,
       apiBaseUrl: message.apiBaseUrl
     }, () => {
-      // Safely register alarm inside service worker context
-      chrome.alarms.create(ALARM_NAME, { periodInMinutes: HEARTBEAT_PERIOD_MINUTES });
-      // Set active badge
-      setBadge("ON", "#22c55e");
+      // In background.js, chrome.alarms is fully accessible
+      chrome.alarms.create("telemetry_heartbeat", { periodInMinutes: 0.5 });
+      chrome.action.setBadgeText({ text: "ON" });
+      chrome.action.setBadgeBackgroundColor({ color: "#22c55e" });
       sendResponse({ status: "ACK_SYNC" });
     });
-    return true; // Keep message channel open for async response
+    return true;
   }
 
   if (message.type === "FOCUS_ENGINE_CLEAR") {
     chrome.storage.local.remove(["activeSessionId"], () => {
-      chrome.alarms.clear(ALARM_NAME);
-      setBadge("", "");
+      chrome.alarms.clear("telemetry_heartbeat");
+      chrome.action.setBadgeText({ text: "" });
       sendResponse({ status: "ACK_CLEAR" });
     });
     return true;
