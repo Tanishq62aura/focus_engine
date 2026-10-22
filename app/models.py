@@ -335,6 +335,9 @@ class UserSetting(Base):
     longest_streak_days = Column(Integer, nullable=False, default=0)
     daily_floor_target = Column(Integer, nullable=False, default=2)
 
+    # Timezone & Regional Localization
+    timezone = Column(String(64), nullable=False, default="UTC")
+
     created_at = Column(DateTime(timezone=True), nullable=False, default=_utcnow)
     updated_at = Column(DateTime(timezone=True), nullable=False, default=_utcnow, onupdate=_utcnow)
 

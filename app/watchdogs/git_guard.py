@@ -35,6 +35,106 @@ DIFF_SUMMARY_REGEX = re.compile(
 )
 
 
+def parse_git_diff_stat(output: str) -> tuple[int, int, int, List[str]]:
+    """
+    Parses `git diff --stat` output in memory using a regex parser.
+    Extracts individual file paths and aggregate line changes.
+    Returns: (files_changed, insertions, deletions, modified_files)
+    """
+    if not output or not output.strip():
+        return 0, 0, 0, []
+
+    modified_files: List[str] = []
+    lines = [line.strip() for line in output.strip().splitlines() if line.strip()]
+    if not lines:
+        return 0, 0, 0, []
+
+    summary_match = None
+    for line in reversed(lines):
+        m = DIFF_SUMMARY_REGEX.search(line)
+        if m:
+            summary_match = m
+            break
+
+    for line in lines:
+        if "|" in line:
+            if summary_match and line == summary_match.string:
+                continue
+            fname = line.split("|")[0].strip().strip('"').strip("'")
+            if fname and fname not in modified_files:
+                modified_files.append(fname)
+
+    if summary_match:
+        files_changed = int(summary_match.group(1) or 0)
+        insertions = int(summary_match.group(2) or 0)
+        deletions = int(summary_match.group(3) or 0)
+    else:
+        files_changed = len(modified_files)
+        insertions = 0
+        deletions = 0
+
+    return files_changed, insertions, deletions, modified_files
+
+
+def run_batch_git_diff(
+    root_path: Union[Path, str],
+    base_ref: Optional[str] = "HEAD",
+    timeout: float = 5.0,
+) -> tuple[int, int, int, List[str], str]:
+    """
+    Executes a single repository-wide batch git diff command against the working tree.
+    Guards against repos without commits (fatal: ambiguous argument 'HEAD') by falling back
+    to `git diff --stat` (staged/unstaged against working tree).
+    Sets strict subprocess timeouts (timeout=5.0) and catches TimeoutExpired and SubprocessError
+    gracefully, returning zero-change summaries rather than crashing the watchdog.
+    """
+    root_str = str(root_path)
+    cmd = ["git", "-C", root_str, "diff", "--stat"]
+    if base_ref:
+        cmd.append(base_ref)
+
+    output = ""
+    try:
+        proc = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+        )
+        if proc.returncode == 0:
+            output = proc.stdout
+        else:
+            err = (proc.stderr or "").lower()
+            if "ambiguous argument" in err or "unknown revision" in err or (base_ref and "head" in err):
+                logger.info("HEAD not found in %s; falling back to git diff --stat", root_str)
+                fb_proc = subprocess.run(
+                    ["git", "-C", root_str, "diff", "--stat"],
+                    capture_output=True,
+                    text=True,
+                    timeout=timeout,
+                )
+                if fb_proc.returncode == 0:
+                    output = fb_proc.stdout
+                    if not output.strip():
+                        cached_proc = subprocess.run(
+                            ["git", "-C", root_str, "diff", "--stat", "--cached"],
+                            capture_output=True,
+                            text=True,
+                            timeout=timeout,
+                        )
+                        if cached_proc.returncode == 0:
+                            output = cached_proc.stdout
+    except (subprocess.TimeoutExpired, subprocess.SubprocessError) as exc:
+        logger.warning("Git diff batch execution error or timeout: %s", exc)
+        return 0, 0, 0, [], ""
+    except Exception as exc:
+        logger.warning("Unexpected error during git diff batch execution: %s", exc)
+        return 0, 0, 0, [], ""
+
+    files_cnt, ins_cnt, del_cnt, files = parse_git_diff_stat(output)
+    return files_cnt, ins_cnt, del_cnt, files, output.strip()
+
+
 def _normalize_timestamp(ts: Optional[Union[datetime, str, float]]) -> Optional[datetime]:
     if ts is None:
         return None
@@ -257,67 +357,31 @@ def check_workspace_activity(
 
         # If commits occurred during session, diff from base_commit captures those commits
         if has_recent_commits:
-            diff_cmd = ["git", "-C", str(root_path), "diff", "--stat"]
-            diff_cmd.append(f"{base_commit}..HEAD" if base_commit else "HEAD")
-            c_diff = subprocess.run(diff_cmd, capture_output=True, text=True, timeout=5)
-            if c_diff.returncode == 0 and c_diff.stdout.strip():
-                raw_diff_parts.append(c_diff.stdout.strip())
-                lines = c_diff.stdout.strip().splitlines()
-                for line in lines[:-1]:
-                    if "|" in line:
-                        fname = line.split("|")[0].strip()
-                        if fname and fname not in modified_files:
-                            modified_files.append(fname)
-                summary_line = lines[-1]
-                match = DIFF_SUMMARY_REGEX.search(summary_line)
-                if match:
-                    files_modified += int(match.group(1) or 0)
-                    insertions += int(match.group(2) or 0)
-                    deletions += int(match.group(3) or 0)
-                else:
-                    files_modified += len(modified_files)
+            commit_ref = f"{base_commit}..HEAD" if base_commit else "HEAD"
+            c_cnt, c_ins, c_del, c_files, c_raw = run_batch_git_diff(
+                root_path, base_ref=commit_ref, timeout=5.0
+            )
+            if c_raw:
+                raw_diff_parts.append(c_raw)
+            for f in c_files:
+                if f not in modified_files:
+                    modified_files.append(f)
+            files_modified += c_cnt
+            insertions += c_ins
+            deletions += c_del
 
-        # B. Check uncommitted modified/staged files in working directory
-        st_proc = subprocess.run(
-            ["git", "-C", str(root_path), "status", "--porcelain"],
-            capture_output=True,
-            text=True,
-            timeout=5,
+        # B. Check uncommitted modified/staged files in working directory via single batch diff
+        b_cnt, b_ins, b_del, b_files, b_raw = run_batch_git_diff(
+            root_path, base_ref="HEAD", timeout=5.0
         )
-        if st_proc.returncode == 0 and st_proc.stdout.strip():
-            for line in st_proc.stdout.splitlines():
-                if len(line) < 3:
-                    continue
-                code = line[:2]
-                rel_file = line[3:].strip().strip('"')
-                if code.startswith("??"):
-                    continue
-                ext = Path(rel_file).suffix.lower()
-                if ext in TARGET_EXTENSIONS:
-                    full_p = root_path / rel_file
-                    if full_p.is_file():
-                        try:
-                            mtime = full_p.stat().st_mtime
-                            if mtime >= threshold:
-                                if rel_file not in modified_files:
-                                    modified_files.append(rel_file)
-                                    files_modified += 1
-                                    f_diff = subprocess.run(
-                                        ["git", "-C", str(root_path), "diff", "--stat", "HEAD", "--", rel_file],
-                                        capture_output=True,
-                                        text=True,
-                                        timeout=5,
-                                    )
-                                    if f_diff.returncode == 0 and f_diff.stdout.strip():
-                                        raw_diff_parts.append(f_diff.stdout.strip())
-                                        m = DIFF_SUMMARY_REGEX.search(f_diff.stdout.strip().splitlines()[-1])
-                                        if m:
-                                            insertions += int(m.group(2) or 0)
-                                            deletions += int(m.group(3) or 0)
-                                        else:
-                                            insertions += 5
-                        except Exception:
-                            pass
+        if b_raw:
+            raw_diff_parts.append(b_raw)
+        for f in b_files:
+            if f not in modified_files:
+                modified_files.append(f)
+        files_modified += b_cnt
+        insertions += b_ins
+        deletions += b_del
 
         # C. Scan untracked files added during this session
         untracked_files, untracked_lines, untracked_names = _scan_untracked_files(root_path, threshold)
@@ -332,6 +396,8 @@ def check_workspace_activity(
     except Exception as e:
         logger.error("Git inspection error: %s, falling back to directory scan.", e)
         return _scan_filesystem_fallback(root_path, since_ts)
+
+    files_modified = max(files_modified, len(modified_files))
 
     # D. If git returns clean, fall back to recursive directory scan
     if files_modified == 0 and len(modified_files) == 0:

@@ -366,6 +366,7 @@ class UserSettingsBase(BaseModel):
     auto_zen_mode: bool = False
     blind_focus_mode: bool = False
     daily_target_minutes: int = Field(default=180, ge=1, le=1440)
+    timezone: str = Field(default="UTC", max_length=64)
 
 
 class UserSettingsUpdate(BaseModel):
@@ -389,6 +390,7 @@ class UserSettingsUpdate(BaseModel):
     auto_zen_mode: Optional[bool] = None
     blind_focus_mode: Optional[bool] = None
     daily_target_minutes: Optional[int] = Field(default=None, ge=1, le=1440)
+    timezone: Optional[str] = Field(default=None, max_length=64)
 
 
 class UserSettingsResponse(UserSettingsBase):

@@ -81,6 +81,7 @@ def init_db():
                     ALTER TABLE user_settings ADD COLUMN IF NOT EXISTS current_streak_days INTEGER DEFAULT 0;
                     ALTER TABLE user_settings ADD COLUMN IF NOT EXISTS longest_streak_days INTEGER DEFAULT 0;
                     ALTER TABLE user_settings ADD COLUMN IF NOT EXISTS daily_floor_target INTEGER DEFAULT 2;
+                    ALTER TABLE user_settings ADD COLUMN IF NOT EXISTS timezone VARCHAR(64) DEFAULT 'UTC';
                     ALTER TABLE focus_sessions ADD COLUMN IF NOT EXISTS timetable_block_id INTEGER REFERENCES timetable_blocks(id) ON DELETE SET NULL;
                     ALTER TABLE timetable_blocks ADD COLUMN IF NOT EXISTS resources JSONB DEFAULT '[]'::jsonb;
                     ALTER TABLE timetable_blocks ADD COLUMN IF NOT EXISTS task_id VARCHAR(36) REFERENCES tasks(id) ON DELETE SET NULL;
@@ -204,6 +205,7 @@ def init_db():
                     "current_streak_days": "INTEGER DEFAULT 0",
                     "longest_streak_days": "INTEGER DEFAULT 0",
                     "daily_floor_target": "INTEGER DEFAULT 2",
+                    "timezone": "VARCHAR(64) DEFAULT 'UTC'",
                 }
                 for cname, cdef in sqlite_col_defs.items():
                     if cname not in setting_cols:

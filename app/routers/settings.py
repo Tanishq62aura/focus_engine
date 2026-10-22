@@ -103,6 +103,7 @@ def _get_or_create_settings(db: Session, user_id: str) -> models.UserSetting:
             current_streak_days=0,
             longest_streak_days=0,
             daily_floor_target=2,
+            timezone="UTC",
         )
         db.add(setting)
         db.commit()
@@ -152,6 +153,7 @@ def _to_response(setting: models.UserSetting) -> schemas.UserSettingsResponse:
         current_streak_days=setting.current_streak_days or 0,
         longest_streak_days=setting.longest_streak_days or 0,
         daily_floor_target=setting.daily_floor_target or 2,
+        timezone=getattr(setting, "timezone", None) or "UTC",
     )
 
 
@@ -221,6 +223,8 @@ def update_user_settings(
         setting.blind_focus_mode = payload.blind_focus_mode
     if payload.daily_target_minutes is not None:
         setting.daily_target_minutes = payload.daily_target_minutes
+    if payload.timezone is not None:
+        setting.timezone = payload.timezone.strip()
 
     db.commit()
     db.refresh(setting)

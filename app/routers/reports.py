@@ -9,6 +9,7 @@ from __future__ import annotations
 import logging
 from datetime import date, datetime, timedelta, timezone
 from typing import Any, Optional, Union
+from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import func
@@ -23,6 +24,14 @@ logger = logging.getLogger("focus_engine.reports")
 router = APIRouter(tags=["reports"])
 
 
+def get_user_zone(tz_name: Optional[str]) -> ZoneInfo:
+    """Safely retrieves ZoneInfo for given timezone name, defaulting to UTC."""
+    try:
+        return ZoneInfo(tz_name) if tz_name else ZoneInfo("UTC")
+    except Exception:
+        return ZoneInfo("UTC")
+
+
 def _get_or_create_user_settings(db: Session, user_id: str) -> models.UserSetting:
     setting = db.query(models.UserSetting).filter(models.UserSetting.user_id == user_id).first()
     if not setting:
@@ -32,6 +41,7 @@ def _get_or_create_user_settings(db: Session, user_id: str) -> models.UserSettin
             current_streak_days=0,
             longest_streak_days=0,
             daily_floor_target=2,
+            timezone="UTC",
         )
         db.add(setting)
         db.commit()
@@ -47,11 +57,16 @@ def get_circadian_matrix(
 ):
     """
     Aggregates 14-day telemetry joining focus_sessions and distraction_logs:
+    - Normalizes event timestamps to the authenticated user's timezone.
     - Group by Day of Week (0=Monday, 6=Sunday) and Hour of Day (0-23).
     - Calculates resistance score per bucket based on interruption count,
       early dropouts (<10m), and viva failures.
     - Returns a 7x24 matrix with values from 0.0 (clean focus) to 1.0 (severe friction).
     """
+    setting = db.query(models.UserSetting).filter(models.UserSetting.user_id == current_user).first()
+    tz_name = getattr(setting, "timezone", None) if setting else None
+    target_tz = get_user_zone(tz_name)
+
     now = datetime.now(timezone.utc)
     cutoff = now - timedelta(days=days)
 
@@ -80,9 +95,12 @@ def get_circadian_matrix(
     for s in sessions:
         if not s.started_at:
             continue
-        st = s.started_at
-        day_idx = st.weekday()  # Monday is 0 and Sunday is 6
-        hour_idx = st.hour
+        dt = s.started_at
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=ZoneInfo("UTC"))
+        local_dt = dt.astimezone(target_tz)
+        day_idx = local_dt.weekday()  # Monday is 0 and Sunday is 6
+        hour_idx = local_dt.hour
 
         bucket = stats[day_idx][hour_idx]
         bucket["sessions"] += 1
@@ -97,9 +115,12 @@ def get_circadian_matrix(
     for d in distractions:
         if not d.timestamp:
             continue
-        ts = d.timestamp
-        day_idx = ts.weekday()
-        hour_idx = ts.hour
+        dt = d.timestamp
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=ZoneInfo("UTC"))
+        local_dt = dt.astimezone(target_tz)
+        day_idx = local_dt.weekday()
+        hour_idx = local_dt.hour
         stats[day_idx][hour_idx]["distractions"] += 1
 
     matrix: list[list[float]] = []
