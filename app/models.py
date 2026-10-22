@@ -63,6 +63,45 @@ class Task(Base):
     schedules = relationship("Schedule", back_populates="task", cascade="all, delete")
     sessions = relationship("FocusSession", back_populates="task", cascade="all, delete")
 
+    @hybrid_property
+    def status(self) -> str:
+        if self.is_completed:
+            return "COMPLETED"
+        if self.is_archived:
+            return "ARCHIVED"
+        return "PENDING"
+
+    @status.setter
+    def status(self, val: str):
+        if val == "COMPLETED":
+            self.is_completed = True
+            self.is_archived = False
+        elif val == "ARCHIVED":
+            self.is_archived = True
+        elif val == "PENDING":
+            self.is_completed = False
+            self.is_archived = False
+
+    @status.expression
+    def status(cls):
+        return case(
+            (cls.is_completed == True, "COMPLETED"),
+            (cls.is_archived == True, "ARCHIVED"),
+            else_="PENDING",
+        )
+
+    @hybrid_property
+    def estimated_duration(self) -> int:
+        return self.estimated_duration_min or 0
+
+    @estimated_duration.setter
+    def estimated_duration(self, val: int):
+        self.estimated_duration_min = val
+
+    @estimated_duration.expression
+    def estimated_duration(cls):
+        return func.coalesce(cls.estimated_duration_min, 0)
+
 
 # ---------------------------------------------------------------------------
 # Schedule

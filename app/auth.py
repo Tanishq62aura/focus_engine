@@ -109,9 +109,19 @@ def decode_token(token: str) -> dict:
     )
 
 
+class CurrentUser(str):
+    """
+    String subclass representing authenticated user ID, providing `.id` property
+    for attribute-based access while maintaining complete backwards-compatibility with string usage.
+    """
+    @property
+    def id(self) -> str:
+        return str(self)
+
+
 async def get_current_user(
     credentials: Optional[HTTPAuthorizationCredentials] = Depends(bearer_scheme),
-) -> str:
+) -> CurrentUser:
     """
     FastAPI dependency that extracts and validates the authenticated user ID.
     If AUTH_DISABLED=true, returns DEV_USER_ID (or decodes token if provided).
@@ -123,10 +133,10 @@ async def get_current_user(
                 payload = decode_token(credentials.credentials)
                 user_id = payload.get("sub") or payload.get("user_id") or payload.get("email")
                 if user_id:
-                    return str(user_id)
+                    return CurrentUser(user_id)
             except Exception:
                 pass
-        return DEV_USER_ID
+        return CurrentUser(DEV_USER_ID)
 
     # ── Enforced Authentication ─────────────────────────────────────────────
     if not credentials or not credentials.credentials:
@@ -147,4 +157,5 @@ async def get_current_user(
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-    return str(user_id)
+    return CurrentUser(user_id)
+

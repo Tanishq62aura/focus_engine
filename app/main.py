@@ -19,7 +19,7 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app import crud, mobile_bridge, models, schemas
-from app.routers import auth, reports, sessions, settings, support, telemetry, timetables
+from app.routers import auth, reports, sessions, settings, support, tasks, telemetry, timetables
 from app.auth import (
     AUTH_DISABLED,
     DEV_USER_ID,
@@ -279,6 +279,7 @@ def list_tasks(
 
 app.include_router(tasks_router, prefix="/api/tasks", tags=["Tasks"])
 app.include_router(tasks_router, prefix="/tasks", tags=["Tasks"])
+app.include_router(tasks.router)
 
 
 # ---------------------------------------------------------------------------
