@@ -65,7 +65,36 @@ chrome.tabs.onActivated.addListener(() => {
 });
 
 // ---------------------------------------------------------------------------
-// 3. UI Helpers: Badges and Notifications
+// 3. Runtime Message Listener (Relayed from content.js)
+// ---------------------------------------------------------------------------
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  if (message.type === "FOCUS_ENGINE_SYNC") {
+    chrome.storage.local.set({
+      authToken: message.token,
+      activeSessionId: message.sessionId,
+      apiBaseUrl: message.apiBaseUrl
+    }, () => {
+      // Safely register alarm inside service worker context
+      chrome.alarms.create(ALARM_NAME, { periodInMinutes: HEARTBEAT_PERIOD_MINUTES });
+      // Set active badge
+      setBadge("ON", "#22c55e");
+      sendResponse({ status: "ACK_SYNC" });
+    });
+    return true; // Keep message channel open for async response
+  }
+
+  if (message.type === "FOCUS_ENGINE_CLEAR") {
+    chrome.storage.local.remove(["activeSessionId"], () => {
+      chrome.alarms.clear(ALARM_NAME);
+      setBadge("", "");
+      sendResponse({ status: "ACK_CLEAR" });
+    });
+    return true;
+  }
+});
+
+// ---------------------------------------------------------------------------
+// 4. UI Helpers: Badges and Notifications
 // ---------------------------------------------------------------------------
 function setBadge(text, color) {
   try {

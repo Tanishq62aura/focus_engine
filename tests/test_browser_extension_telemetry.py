@@ -221,3 +221,33 @@ def test_session_not_found_returns_404(client, auth_headers):
     }
     resp = client.post("/api/telemetry/heartbeat", json=payload, headers=auth_headers)
     assert resp.status_code == 404
+
+
+def test_content_script_no_alarms_reference_and_background_message_handling():
+    """Verify content.js contains zero references to chrome.alarms and background.js handles relay messages."""
+    content_paths = [
+        Path(__file__).resolve().parent.parent / "browser_youtube_watchdog" / "content.js",
+        Path(__file__).resolve().parent.parent / "extension" / "content.js",
+    ]
+    background_paths = [
+        Path(__file__).resolve().parent.parent / "browser_youtube_watchdog" / "background.js",
+        Path(__file__).resolve().parent.parent / "extension" / "background.js",
+    ]
+
+    for cp in content_paths:
+        assert cp.exists(), f"File missing: {cp}"
+        code = cp.read_text(encoding="utf-8")
+        assert "chrome.alarms" not in code, f"Forbidden chrome.alarms call found in {cp}"
+        assert "chrome.runtime.sendMessage" in code, f"Missing message relay bridge in {cp}"
+        assert "FOCUS_ENGINE_SYNC" in code
+        assert "FOCUS_ENGINE_CLEAR" in code
+
+    for bp in background_paths:
+        assert bp.exists(), f"File missing: {bp}"
+        code = bp.read_text(encoding="utf-8")
+        assert "chrome.runtime.onMessage.addListener" in code
+        assert "FOCUS_ENGINE_SYNC" in code
+        assert "FOCUS_ENGINE_CLEAR" in code
+        assert "chrome.alarms.create" in code
+        assert "chrome.alarms.clear" in code
+
