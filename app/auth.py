@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import logging
 import os
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from fastapi import Depends, HTTPException, status
@@ -41,6 +42,20 @@ except ImportError:
     except ImportError:
         jwt = None
         JWTError = Exception
+
+
+def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -> str:
+    """Creates a JWT access token for authentication."""
+    secret = SUPABASE_JWT_SECRET or "dev-insecure-local-only-key"
+    now = datetime.now(timezone.utc)
+    expire = now + (expires_delta or timedelta(days=7))
+    to_encode = data.copy()
+    to_encode.update({"iat": int(now.timestamp()), "exp": int(expire.timestamp())})
+    if "aud" not in to_encode:
+        to_encode["aud"] = "authenticated"
+    if "role" not in to_encode:
+        to_encode["role"] = "authenticated"
+    return jwt.encode(to_encode, secret, algorithm="HS256")
 
 
 def decode_token(token: str) -> dict:

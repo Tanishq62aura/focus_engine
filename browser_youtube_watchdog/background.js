@@ -1,178 +1,211 @@
 /**
- * background.js  –  Focus Engine YouTube Watchdog (Manifest V3 service worker)
+ * background.js - Focus Engine Chromium MV3 Service Worker
+ * Compatible with Google Chrome and Microsoft Edge.
  *
  * Responsibilities:
- *   1. Detect when the user navigates to a youtube.com/watch URL.
- *   2. Strip the " - YouTube" suffix from the tab title.
- *   3. Deduplicate: skip if the same URL was reported within the last 30 s.
- *   4. POST {video_title, channel_name, url} to the Focus Engine API.
- *   5. Suppress all network errors silently (backend may be offline).
+ * 1. Dual-Browser detection (Chrome vs. Edge)
+ * 2. Persistent 30-second telemetry pulse via chrome.alarms (ephemeral SW safe)
+ * 3. Query active tab domain and dispatch POST /api/telemetry/heartbeat
+ * 4. State machine badge & desktop notification handling:
+ *    - 401 Unauthorized -> Clear auth, badge "AUTH" (#ef4444), clear alarm
+ *    - 404 Not Found    -> Clear session, badge "", clear alarm
+ *    - 200 OK           ->
+ *        - "OK": badge "ON" (or ""), color #22c55e
+ *        - "WARNING": badge "!${violation_count}", color #f59e0b, desktop notification
+ *        - "SESSION_TERMINATED" or "ABORTED": badge "ABRT", color #ef4444, desktop notification, clear session & alarm
  */
 
 'use strict';
 
 // ---------------------------------------------------------------------------
-// Config
+// 1. Dual-Browser Source Detection
 // ---------------------------------------------------------------------------
-const API_BASE       = 'http://127.0.0.1:8000';
-const ENDPOINT       = `${API_BASE}/sessions/active/youtube-audit`;
-const DEDUP_TTL_MS   = 30_000;   // ignore same URL within 30 s
-const YT_WATCH_REGEX = /youtube\.com\/watch/;
+const BROWSER_SOURCE = navigator.userAgent.includes("Edg/") ? "edge" : "chrome";
+const ALARM_NAME = "telemetry_heartbeat";
+const HEARTBEAT_PERIOD_MINUTES = 0.5; // 30 seconds
 
 // ---------------------------------------------------------------------------
-// Dedup cache  { url -> timestamp }
+// 2. Alarm Lifecycle Registration (Startup & Install)
 // ---------------------------------------------------------------------------
-const _reported = new Map();
-
-function _isDuplicate(url) {
-  const last = _reported.get(url);
-  if (!last) return false;
-  return (Date.now() - last) < DEDUP_TTL_MS;
-}
-
-function _markReported(url) {
-  _reported.set(url, Date.now());
-  // Prune stale entries to avoid unbounded growth
-  for (const [u, ts] of _reported) {
-    if (Date.now() - ts > DEDUP_TTL_MS * 2) _reported.delete(u);
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Title cleanup
-// ---------------------------------------------------------------------------
-function _cleanTitle(rawTitle) {
-  if (!rawTitle) return 'Unknown Video';
-  // Strip trailing " - YouTube" (case-insensitive, handles extra spaces)
-  return rawTitle.replace(/\s*-\s*youtube\s*$/i, '').trim() || rawTitle.trim();
-}
-
-// ---------------------------------------------------------------------------
-// Auth token helper
-// ---------------------------------------------------------------------------
-async function _getAuthToken() {
-  try {
-    if (typeof chrome !== 'undefined' && chrome.storage) {
-      if (chrome.storage.sync) {
-        const data = await chrome.storage.sync.get(['focusAuthToken', 'authToken']);
-        if (data?.focusAuthToken) return data.focusAuthToken;
-        if (data?.authToken) return data.authToken;
-      }
-      if (chrome.storage.local) {
-        const data = await chrome.storage.local.get(['focusAuthToken', 'authToken']);
-        if (data?.focusAuthToken) return data.focusAuthToken;
-        if (data?.authToken) return data.authToken;
-      }
+function registerHeartbeatAlarm() {
+  chrome.alarms.get(ALARM_NAME, (existing) => {
+    if (!existing) {
+      chrome.alarms.create(ALARM_NAME, { periodInMinutes: HEARTBEAT_PERIOD_MINUTES });
     }
-  } catch (_) {}
-  return null;
+  });
 }
 
-// ---------------------------------------------------------------------------
-// Core: fetch tab info and report
-// ---------------------------------------------------------------------------
-async function _reportTab(tabId) {
-  let tab;
-  try {
-    tab = await chrome.tabs.get(tabId);
-  } catch (_) {
-    return; // Tab may have closed before we could query it
+chrome.runtime.onInstalled.addListener(() => {
+  console.info(`[FocusEngine] Extension installed on ${BROWSER_SOURCE}.`);
+  chrome.storage.local.get(['activeSessionId', 'authToken'], (data) => {
+    if (data?.activeSessionId && data?.authToken) {
+      registerHeartbeatAlarm();
+    }
+  });
+});
+
+chrome.runtime.onStartup.addListener(() => {
+  console.info(`[FocusEngine] Browser started on ${BROWSER_SOURCE}.`);
+  chrome.storage.local.get(['activeSessionId', 'authToken'], (data) => {
+    if (data?.activeSessionId && data?.authToken) {
+      registerHeartbeatAlarm();
+    }
+  });
+});
+
+chrome.alarms.onAlarm.addListener((alarm) => {
+  if (alarm.name === ALARM_NAME) {
+    sendHeartbeatPulse();
   }
+});
 
-  const url = tab.url || '';
-  if (!YT_WATCH_REGEX.test(url)) return;
-  if (_isDuplicate(url)) return;
+// Also trigger on active tab switch for immediate telemetry
+chrome.tabs.onActivated.addListener(() => {
+  sendHeartbeatPulse();
+});
 
-  const videoTitle = _cleanTitle(tab.title);
-
-  // Optimistically mark before the fetch to prevent parallel duplicates
-  _markReported(url);
-
-  const payload = {
-    video_title: videoTitle,
-    channel_name: null,   // content-script needed for channel; null is valid
-    url: url,
-  };
-
-  const headers = { 'Content-Type': 'application/json' };
-  const token = await _getAuthToken();
-  if (token) {
-    headers['Authorization'] = `Bearer ${token}`;
-  }
-
+// ---------------------------------------------------------------------------
+// 3. UI Helpers: Badges and Notifications
+// ---------------------------------------------------------------------------
+function setBadge(text, color) {
   try {
-    const res = await fetch(ENDPOINT, {
-      method: 'POST',
-      headers: headers,
-      body: JSON.stringify(payload),
-      // Keep-alive not supported in SW fetch; signal abort after 5 s
-      signal: AbortSignal.timeout(5000),
-    });
-
-    if (res.ok) {
-      const data = await res.json();
-      _handleResponse(data, videoTitle, url);
-    } else {
-      console.warn(`[FocusYT] API returned ${res.status} for "${videoTitle}"`);
+    if (chrome.action?.setBadgeText) {
+      chrome.action.setBadgeText({ text: text || "" });
+      if (color && chrome.action.setBadgeBackgroundColor) {
+        chrome.action.setBadgeBackgroundColor({ color });
+      }
     }
   } catch (err) {
-    // Backend is unreachable (server offline, CORS pre-check, timeout, etc.)
-    // Silently suppress – never throw from a service worker listener.
-    if (err?.name !== 'AbortError') {
-      console.debug('[FocusYT] Backend unreachable:', err?.message);
+    console.debug("[FocusEngine] Badge error:", err);
+  }
+}
+
+function notifyUser(id, title, message) {
+  try {
+    if (chrome.notifications?.create) {
+      chrome.notifications.create(id || `fe_notice_${Date.now()}`, {
+        type: "basic",
+        iconUrl: "icons/icon48.png",
+        title: title || "Focus Engine",
+        message: message,
+        priority: 2,
+      });
     }
+  } catch (err) {
+    console.debug("[FocusEngine] Notification error:", err);
   }
 }
 
 // ---------------------------------------------------------------------------
-// Response handler – show badge / log
+// 4. Heartbeat Execution Flow & Response State Machine
 // ---------------------------------------------------------------------------
-function _handleResponse(data, title, url) {
-  if (!data) return;
-
-  if (data.status === 'no_session') {
-    // No active session – nothing to flag
-    console.debug('[FocusYT] No active focus session.');
-    _setBadge('', '');
+async function sendHeartbeatPulse() {
+  let stored;
+  try {
+    stored = await chrome.storage.local.get(['authToken', 'activeSessionId', 'apiBaseUrl']);
+  } catch (err) {
+    console.debug("[FocusEngine] Storage read error:", err);
     return;
   }
 
-  if (data.is_distraction) {
-    console.warn(`[FocusYT] 🚨 DISTRACTION flagged: "${title}"`);
-    _setBadge('!', '#ef4444');   // red badge
-  } else {
-    console.info(`[FocusYT] ✅ Approved: "${title}"`);
-    _setBadge('✓', '#22c55e');   // green badge, clears after 5 s
-    setTimeout(() => _setBadge('', ''), 5000);
+  const { authToken, activeSessionId, apiBaseUrl } = stored || {};
+
+  // Skip dispatch if authToken or activeSessionId is not present
+  if (!authToken || !activeSessionId) {
+    return;
+  }
+
+  // Query active tab in the current window
+  let activeTab = null;
+  try {
+    const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+    if (tabs && tabs.length > 0) {
+      activeTab = tabs[0];
+    }
+  } catch (err) {
+    console.debug("[FocusEngine] Tab query error:", err);
+  }
+
+  // Parse active URL (ignore non-HTTP URLs like chrome://, edge://, about:blank)
+  let targetUrl = null;
+  if (activeTab?.url) {
+    const rawUrl = activeTab.url.trim();
+    if (rawUrl.startsWith("http://") || rawUrl.startsWith("https://")) {
+      targetUrl = rawUrl;
+    }
+  }
+
+  const payload = {
+    session_id: activeSessionId,
+    source: BROWSER_SOURCE,
+    event_type: "tab_active",
+    active_target: targetUrl,
+    is_idle: false,
+  };
+
+  const baseUrl = (apiBaseUrl || "http://127.0.0.1:8000").replace(/\/+$/, '');
+  const endpoint = `${baseUrl}/api/telemetry/heartbeat`;
+
+  try {
+    const response = await fetch(endpoint, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${authToken}`,
+      },
+      body: JSON.stringify(payload),
+      signal: AbortSignal.timeout(5000),
+    });
+
+    // --- State Machine Response Evaluation ---
+    if (response.status === 401) {
+      // HTTP 401 Unauthorized: Token invalid or expired
+      console.warn("[FocusEngine] 401 Unauthorized: Invalid or expired token.");
+      await chrome.storage.local.remove(["authToken"]);
+      setBadge("AUTH", "#ef4444");
+      chrome.alarms.clear(ALARM_NAME);
+      return;
+    }
+
+    if (response.status === 404) {
+      // HTTP 404 Not Found: Session ended on backend
+      console.info("[FocusEngine] 404 Not Found: Active session has concluded.");
+      await chrome.storage.local.remove(["activeSessionId"]);
+      setBadge("", "");
+      chrome.alarms.clear(ALARM_NAME);
+      return;
+    }
+
+    if (response.ok) {
+      const data = await response.json();
+      const status = data?.status;
+      const count = data?.violation_count ?? 0;
+
+      if (status === "OK") {
+        setBadge("ON", "#22c55e");
+      } else if (status === "WARNING") {
+        setBadge(`!${count}`, "#f59e0b");
+        notifyUser(
+          "focus_warning",
+          "Focus Engine",
+          `Focus Warning: Off-task target detected (${count}/3)`
+        );
+      } else if (status === "ABORTED" || status === "SESSION_TERMINATED") {
+        setBadge("ABRT", "#ef4444");
+        notifyUser(
+          "focus_aborted",
+          "Focus Engine",
+          "Session Terminated: Auto-aborted due to repeated distractions"
+        );
+        await chrome.storage.local.remove(["activeSessionId"]);
+        chrome.alarms.clear(ALARM_NAME);
+      }
+    } else {
+      console.warn(`[FocusEngine] Backend returned ${response.status}`);
+    }
+  } catch (err) {
+    if (err?.name !== 'AbortError') {
+      console.debug("[FocusEngine] Telemetry pulse offline/unreachable:", err?.message);
+    }
   }
 }
-
-function _setBadge(text, color) {
-  chrome.action.setBadgeText({ text });
-  if (color) chrome.action.setBadgeBackgroundColor({ color });
-}
-
-// ---------------------------------------------------------------------------
-// Event listeners
-// ---------------------------------------------------------------------------
-
-/**
- * Fires when a tab's URL or title changes.
- * We only care about 'complete' status so the title is fully resolved.
- */
-chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
-  // Only act when the page load is complete and it's a YouTube watch URL
-  if (changeInfo.status !== 'complete') return;
-  if (!tab.active) return;                    // Only audit the focused tab
-  if (!YT_WATCH_REGEX.test(tab.url || '')) return;
-
-  await _reportTab(tabId);
-});
-
-/**
- * Fires when the user switches to a different tab.
- * Covers the case where the tab is already loaded when the user switches to it.
- */
-chrome.tabs.onActivated.addListener(async ({ tabId }) => {
-  await _reportTab(tabId);
-});

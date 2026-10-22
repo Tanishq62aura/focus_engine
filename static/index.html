@@ -2519,6 +2519,7 @@
       if (sid) {
         activeSessionId = sid;
         try { localStorage.setItem('active_session_id', sid); } catch (_) {}
+        if (typeof broadcastExtensionSync === 'function') broadcastExtensionSync(sid);
       }
       currentSession = sessionData;
       window.currentSession = sessionData;
@@ -2642,6 +2643,7 @@
         if (sid) {
           activeSessionId = sid;
           try { localStorage.setItem('active_session_id', sid); } catch (_) {}
+          if (typeof broadcastExtensionSync === 'function') broadcastExtensionSync(sid);
         }
         currentSession = res;
         window.currentSession = res;
@@ -2731,6 +2733,34 @@
     let tasks = [];
     const DEFAULT_SB_URL = 'https://njxlltvrcmqinrnhlpgh.supabase.co';
     const DEFAULT_SB_ANON = '';
+
+    function broadcastExtensionSync(sessionId, token) {
+      try {
+        const t = token || localStorage.getItem('focus_auth_token') || '';
+        const sid = sessionId || activeSessionId;
+        if (sid) {
+          window.postMessage({
+            type: 'FOCUS_ENGINE_SYNC',
+            sessionId: sid,
+            token: t,
+          }, window.location.origin);
+        }
+      } catch (err) {
+        console.debug('Extension sync broadcast error:', err);
+      }
+    }
+    window.broadcastExtensionSync = broadcastExtensionSync;
+
+    function broadcastExtensionClear() {
+      try {
+        window.postMessage({
+          type: 'FOCUS_ENGINE_CLEAR',
+        }, window.location.origin);
+      } catch (err) {
+        console.debug('Extension clear broadcast error:', err);
+      }
+    }
+    window.broadcastExtensionClear = broadcastExtensionClear;
 
     // ---------------------------------------------------------------
 
@@ -3535,6 +3565,7 @@
         });
         activeSessionId = res.id;
         try { localStorage.setItem('active_session_id', res.id); } catch (_) {}
+        if (typeof broadcastExtensionSync === 'function') broadcastExtensionSync(res.id);
         currentSession = res;
         window.currentSession = res;
         window.activeSession = res;
@@ -3726,6 +3757,7 @@
         timerInterval = null;
       }
       try { localStorage.removeItem('active_session_id'); } catch (_) {}
+      if (typeof broadcastExtensionClear === 'function') broadcastExtensionClear();
       activeSessionId = null;
       currentSession = null;
       window.currentSession = null;

@@ -617,4 +617,21 @@ class TimetableReschedulePayload(BaseModel):
     reason: Optional[str] = "User requested adjustment"
 
 
+# ---------------------------------------------------------------------------
+# Telemetry Heartbeat Schemas
+# ---------------------------------------------------------------------------
+class HeartbeatPayload(BaseModel):
+    session_id: str
+    source: Literal["vscode", "chrome", "edge"]
+    event_type: str = Field(..., description="e.g. 'keystroke', 'tab_active', 'focus_lost'")
+    active_target: Optional[str] = Field(None, description="Active file path or active browser URL")
+    is_idle: bool = False
+
+
+class HeartbeatResponse(BaseModel):
+    status: Literal["OK", "WARNING", "SESSION_TERMINATED", "ABORTED"]
+    violation_count: int
+    message: str
+
+
 

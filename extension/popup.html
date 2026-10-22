@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <style>
+    body {
+      width: 260px;
+      font-family: 'Segoe UI', sans-serif;
+      background: #0f172a;
+      color: #f1f5f9;
+      padding: 14px 16px;
+      margin: 0;
+    }
+    h2 { font-size: 13px; margin: 0 0 8px; color: #06b6d4; }
+    p  { font-size: 11px; color: #94a3b8; margin: 0 0 10px; line-height: 1.5; }
+    .status { font-size: 11px; padding: 6px 10px; border-radius: 8px;
+              background: #1e293b; border: 1px solid #334155; }
+    a { color: #3b82f6; text-decoration: none; font-size: 11px; }
+  </style>
+</head>
+<body>
+  <h2>📺 YouTube Watchdog</h2>
+  <p>Monitoring YouTube tabs during your focus sessions.<br/>
+     Off-task videos are automatically flagged.</p>
+  <div class="status" id="status">Checking backend…</div>
+  <br/>
+  <a href="http://127.0.0.1:8000" target="_blank">Open Focus Engine HUD ↗</a>
+
+  <script>
+    fetch('http://127.0.0.1:8000/reports/today')
+      .then(r => r.ok ? r.json() : null)
+      .then(d => {
+        document.getElementById('status').textContent = d
+          ? `✅ Backend online · ${d.total_distractions} distraction(s) today`
+          : '⚠️ Backend unreachable';
+      })
+      .catch(() => {
+        document.getElementById('status').textContent = '⚠️ Backend offline';
+      });
+  </script>
+</body>
+</html>

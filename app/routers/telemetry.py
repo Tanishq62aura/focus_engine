@@ -13,21 +13,21 @@ router = APIRouter(prefix="/api/telemetry", tags=["telemetry"])
 
 OFF_TASK_BLACKLIST = {
     "twitter.com", "x.com", "instagram.com", "reddit.com",
-    "facebook.com", "tiktok.com", "netflix.com"
+    "facebook.com", "tiktok.com", "netflix.com", "youtube.com"
 }
 MAX_ALLOWED_VIOLATIONS = 3
 
 
 class HeartbeatPayload(BaseModel):
     session_id: str
-    source: Literal["vscode", "chrome"]
+    source: Literal["vscode", "chrome", "edge"]
     event_type: str = Field(..., description="e.g. 'keystroke', 'tab_active', 'focus_lost'")
     active_target: Optional[str] = Field(None, description="Active file path or active browser URL")
     is_idle: bool = False
 
 
 class HeartbeatResponse(BaseModel):
-    status: Literal["OK", "WARNING", "SESSION_TERMINATED"]
+    status: Literal["OK", "WARNING", "SESSION_TERMINATED", "ABORTED"]
     violation_count: int
     message: str
 
@@ -60,7 +60,7 @@ def record_heartbeat(
     is_on_task = True
     violation_reason = None
 
-    if payload.source == "chrome" and payload.active_target:
+    if payload.source in ("chrome", "edge") and payload.active_target:
         target_lower = payload.active_target.lower()
         if any(domain in target_lower for domain in OFF_TASK_BLACKLIST):
             is_on_task = False
