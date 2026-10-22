@@ -165,6 +165,7 @@ if _STATIC_DIR.exists():
 # Mount API routers
 app.include_router(auth.router, prefix="/api/auth", tags=["auth"])
 app.include_router(settings.router, prefix="/api/settings", tags=["settings"])
+app.include_router(settings.router, prefix="/settings", tags=["settings"])
 app.include_router(support.router, prefix="/api/support", tags=["support"])
 app.include_router(reports.router, prefix="/api/reports", tags=["reports"])
 app.include_router(reports.router, prefix="/reports", tags=["reports"])

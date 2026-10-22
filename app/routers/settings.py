@@ -169,6 +169,8 @@ def get_user_settings(
 
 @router.put("", response_model=schemas.UserSettingsResponse)
 @router.put("/", response_model=schemas.UserSettingsResponse)
+@router.patch("", response_model=schemas.UserSettingsResponse)
+@router.patch("/", response_model=schemas.UserSettingsResponse)
 @router.post("", response_model=schemas.UserSettingsResponse)
 @router.post("/", response_model=schemas.UserSettingsResponse)
 def update_user_settings(

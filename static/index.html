@@ -613,24 +613,33 @@
     <div class="mt-8 pt-6 border-t border-zinc-800">
       <div class="flex items-center justify-between mb-3 flex-wrap gap-2">
         <div>
-          <h3 class="text-xs font-bold uppercase tracking-wider text-zinc-200 flex items-center gap-2">
-            <svg class="w-4 h-4 text-zinc-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
-            <span>Circadian Resistance & Excuse Heatmap</span>
-          </h3>
-          <p class="text-[11px] text-zinc-400">14-day telemetry matrix: Day of Week × Hour of Day friction density</p>
+          <div class="flex items-center gap-2 flex-wrap">
+            <h3 class="text-xs font-bold uppercase tracking-wider text-zinc-200 flex items-center gap-2">
+              <svg class="w-4 h-4 text-indigo-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+              <span>Circadian Resistance & Excuse Heatmap</span>
+            </h3>
+            <span id="circadian-tz-badge" class="text-[10px] mono px-2 py-0.5 rounded bg-zinc-900 text-zinc-400 border border-zinc-800" title="Normalized Timezone">TZ: UTC</span>
+            <span id="circadian-stats-badge" class="text-[10px] mono px-2 py-0.5 rounded bg-zinc-900 text-zinc-400 border border-zinc-800">14-day telemetry</span>
+            <span id="circadian-peak-badge" class="text-[10px] mono px-2 py-0.5 rounded bg-rose-500/10 text-rose-300 border border-rose-500/30 hidden"></span>
+          </div>
+          <p class="text-[11px] text-zinc-400 mt-0.5">14-day telemetry matrix: Day of Week (Mon-Sun) × Hour of Day (00-23) friction density</p>
         </div>
-        <div class="flex items-center gap-3 text-[11px] mono text-zinc-400">
-          <div class="flex items-center gap-1.5">
+        <div class="flex items-center gap-2.5 text-[11px] mono text-zinc-400 flex-wrap">
+          <div class="flex items-center gap-1">
             <span class="w-2.5 h-2.5 rounded-sm bg-zinc-900 border border-zinc-800"></span>
-            <span>Clean Focus (0.0)</span>
+            <span>Clean (0.0)</span>
           </div>
-          <div class="flex items-center gap-1.5">
-            <span class="w-2.5 h-2.5 rounded-sm bg-amber-600/60"></span>
-            <span>Moderate Friction</span>
+          <div class="flex items-center gap-1">
+            <span class="w-2.5 h-2.5 rounded-sm bg-emerald-950/70 border border-emerald-700/60"></span>
+            <span>Low</span>
           </div>
-          <div class="flex items-center gap-1.5">
-            <span class="w-2.5 h-2.5 rounded-sm bg-rose-600/80"></span>
-            <span>Severe Friction (1.0)</span>
+          <div class="flex items-center gap-1">
+            <span class="w-2.5 h-2.5 rounded-sm bg-amber-600/70 border border-amber-500"></span>
+            <span>Moderate</span>
+          </div>
+          <div class="flex items-center gap-1">
+            <span class="w-2.5 h-2.5 rounded-sm bg-rose-600 border border-rose-500"></span>
+            <span>High (1.0)</span>
           </div>
         </div>
       </div>
@@ -1345,6 +1354,23 @@
                 <span class="text-zinc-400 text-[11px]">User UUID:</span>
                 <span id="setting-user-id" class="mono text-[10px] text-zinc-500 truncate max-w-[200px]">dev-user</span>
               </div>
+            </div>
+
+            <!-- Timezone Configuration -->
+            <div class="p-3 rounded-lg bg-zinc-950 border border-zinc-800 space-y-1.5 text-xs">
+              <div class="flex items-center justify-between">
+                <label for="setting-timezone" class="text-zinc-300 text-[11px] font-semibold flex items-center gap-1.5">
+                  <svg class="w-3.5 h-3.5 text-indigo-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 14 14"/>
+                  </svg>
+                  <span>User Timezone</span>
+                </label>
+                <span id="setting-timezone-detected" class="text-[10px] text-zinc-500 font-mono"></span>
+              </div>
+              <select id="setting-timezone" class="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-2.5 py-2 text-zinc-200 text-xs focus:outline-none focus:border-zinc-400 font-mono">
+                <!-- Populated dynamically via Intl.supportedValuesOf('timeZone') -->
+              </select>
+              <p class="text-[10px] text-zinc-500">Normalizes circadian resistance telemetry and daily scorecard cutoffs.</p>
             </div>
 
             <!-- Actions -->
@@ -4178,12 +4204,15 @@
         const dailyFloorInput = document.getElementById('setting-daily-target-min');
         if (dailyFloorInput) dailyFloorInput.value = settings.daily_target_minutes || 180;
 
-        // Populate Section 5: Account
+        // Populate Section 5: Account & Timezone
         const emailBadge = document.getElementById('setting-user-email');
         const uidBadge = document.getElementById('setting-user-id');
         const localEmail = localStorage.getItem('focus_user_email');
         if (emailBadge) emailBadge.textContent = localEmail || (settings.user_id + '@local');
         if (uidBadge) uidBadge.textContent = settings.user_id || 'dev-user';
+
+        const userTz = settings.timezone || (Intl.DateTimeFormat && Intl.DateTimeFormat().resolvedOptions().timeZone) || 'UTC';
+        populateTimezoneOptions(userTz);
 
         // Bind volume slider dynamic label
         if (volSlider && !volSlider._bound) {
@@ -4197,6 +4226,53 @@
       }
     }
     window.loadAllSettings = loadAllSettings;
+
+    function populateTimezoneOptions(selectedTz) {
+      const tzSelect = document.getElementById('setting-timezone');
+      if (!tzSelect) return;
+
+      const detectedTz = (Intl.DateTimeFormat && Intl.DateTimeFormat().resolvedOptions().timeZone) || 'UTC';
+      const detectedLabel = document.getElementById('setting-timezone-detected');
+      if (detectedLabel) {
+        detectedLabel.textContent = `Browser: ${detectedTz}`;
+      }
+
+      let timezones = [];
+      try {
+        if (typeof Intl.supportedValuesOf === 'function') {
+          timezones = Intl.supportedValuesOf('timeZone');
+        }
+      } catch (e) {
+        console.debug('Intl.supportedValuesOf unavailable:', e);
+      }
+
+      if (!timezones || !timezones.length) {
+        timezones = [
+          'UTC', detectedTz,
+          'America/New_York', 'America/Chicago', 'America/Denver', 'America/Los_Angeles',
+          'Europe/London', 'Europe/Paris', 'Europe/Berlin',
+          'Asia/Kolkata', 'Asia/Tokyo', 'Asia/Singapore', 'Asia/Dubai',
+          'Australia/Sydney', 'Pacific/Auckland'
+        ];
+      }
+
+      if (detectedTz && !timezones.includes(detectedTz)) {
+        timezones.push(detectedTz);
+      }
+      if (!timezones.includes('UTC')) {
+        timezones.push('UTC');
+      }
+
+      timezones = Array.from(new Set(timezones)).sort((a, b) => a.localeCompare(b));
+
+      const activeTz = selectedTz || detectedTz || 'UTC';
+      tzSelect.innerHTML = timezones.map(tz => {
+        const isSelected = tz === activeTz ? 'selected' : '';
+        return `<option value="${escapeHtml(tz)}" ${isSelected}>${escapeHtml(tz)}</option>`;
+      }).join('');
+      tzSelect.value = activeTz;
+    }
+    window.populateTimezoneOptions = populateTimezoneOptions;
 
     function renderTracksSettings(tracks) {
       const listEl = document.getElementById('settings-track-list');
@@ -4319,13 +4395,19 @@
           auto_zen_mode: Boolean(document.getElementById('setting-auto-zen')?.checked),
           blind_focus_mode: Boolean(document.getElementById('setting-blind-focus')?.checked),
           daily_target_minutes: parseInt(document.getElementById('setting-daily-target-min')?.value, 10) || 180,
+          timezone: document.getElementById('setting-timezone')?.value || (Intl.DateTimeFormat && Intl.DateTimeFormat().resolvedOptions().timeZone) || 'UTC',
         };
+
+        const tzValue = payload.timezone;
+        // Dispatch PATCH request to update the timezone field in the database
+        await api('PATCH', '/api/settings', { timezone: tzValue });
 
         const res = await api('PUT', '/api/settings', payload);
         window.currentSettings = res;
         toast('Configuration persisted successfully!', 'success');
         closeSettingsDrawer();
         loadDailyScorecard();
+        loadCircadianHeatmap();
       } catch (err) {
         toast('Save failed: ' + err.message, 'error');
       } finally {
@@ -4827,25 +4909,66 @@
       if (!rowsContainer || !data || !data.matrix) return;
 
       const days = data.days || ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+      const fullDayNames = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
       const matrix = data.matrix;
+
+      // Update Timezone, Telemetry counts & Peak slot badges
+      const userTz = (window.currentSettings && window.currentSettings.timezone) || (Intl.DateTimeFormat && Intl.DateTimeFormat().resolvedOptions().timeZone) || 'UTC';
+      const tzBadge = document.getElementById('circadian-tz-badge');
+      if (tzBadge) {
+        tzBadge.textContent = `TZ: ${userTz}`;
+        tzBadge.title = `Normalized to user timezone: ${userTz}`;
+      }
+
+      const statsBadge = document.getElementById('circadian-stats-badge');
+      if (statsBadge) {
+        const sCount = data.total_sessions_analyzed || 0;
+        const dCount = data.total_interruptions_analyzed || 0;
+        statsBadge.textContent = `${sCount} sessions • ${dCount} distractions`;
+      }
+
+      const peakBadge = document.getElementById('circadian-peak-badge');
+      if (peakBadge) {
+        if (data.peak_friction_slot && data.peak_friction_slot.score > 0) {
+          const p = data.peak_friction_slot;
+          const pHour = String(p.hour).padStart(2, '0') + ':00';
+          peakBadge.textContent = `Peak Friction: ${p.day_name} ${pHour} (${p.score.toFixed(2)})`;
+          peakBadge.title = `Peak Friction Slot: ${p.day_name} at ${pHour} with resistance ${p.score.toFixed(2)}`;
+          peakBadge.classList.remove('hidden');
+        } else {
+          peakBadge.classList.add('hidden');
+        }
+      }
 
       rowsContainer.innerHTML = days.map((dayName, dIdx) => {
         const rowData = matrix[dIdx] || [];
+        const fullDay = fullDayNames[dIdx] || dayName;
+
         const cellsHtml = rowData.map((val, hIdx) => {
-          let cellClass = 'bg-zinc-900 border-zinc-850 hover:border-zinc-500';
-          if (val > 0.6) {
-            cellClass = 'bg-rose-600/80 border-rose-500/80 hover:bg-rose-500 shadow-sm shadow-rose-900/40';
-          } else if (val > 0.3) {
-            cellClass = 'bg-amber-600/60 border-amber-500/60 hover:bg-amber-500 shadow-sm shadow-amber-900/40';
-          } else if (val > 0.0) {
-            cellClass = 'bg-zinc-800 border-zinc-700 hover:bg-zinc-700';
+          const numVal = typeof val === 'number' ? val : 0;
+          let cellClass = 'bg-zinc-900 border-zinc-800 hover:border-zinc-500 hover:bg-zinc-800';
+          let levelStr = 'Clean Focus';
+
+          if (numVal > 0.75) {
+            cellClass = 'bg-rose-600 border-rose-500 hover:bg-rose-500 shadow-sm shadow-rose-950/60';
+            levelStr = 'Severe Friction';
+          } else if (numVal > 0.5) {
+            cellClass = 'bg-orange-600/80 border-orange-500 hover:bg-orange-500 shadow-sm shadow-orange-950/50';
+            levelStr = 'Elevated Friction';
+          } else if (numVal > 0.25) {
+            cellClass = 'bg-amber-600/70 border-amber-500 hover:bg-amber-500 shadow-sm shadow-amber-950/40';
+            levelStr = 'Moderate Friction';
+          } else if (numVal > 0.0) {
+            cellClass = 'bg-emerald-950/70 border-emerald-700/60 hover:bg-emerald-900/80 text-emerald-400';
+            levelStr = 'Low Friction';
           }
 
-          const hourLabel = String(hIdx).padStart(2, '0') + ':00';
-          const infoStr = `[${dayName} ${hourLabel}] Resistance: ${val.toFixed(2)}`;
+          const startHour = String(hIdx).padStart(2, '0') + ':00';
+          const nextHour = String((hIdx + 1) % 24).padStart(2, '0') + ':00';
+          const infoStr = `[${fullDay} ${startHour}-${nextHour}] Resistance Score: ${numVal.toFixed(2)} (${levelStr}) • TZ: ${userTz}`;
 
-          return `<div onmouseenter="showCircadianTooltip('${infoStr}')" onclick="showCircadianTooltip('${infoStr}')"
-            class="h-6 rounded-sm border cursor-pointer transition-colors duration-150 ${cellClass}" title="${infoStr}"></div>`;
+          return `<div onmouseenter="showCircadianTooltip('${escapeHtml(infoStr)}')" onclick="showCircadianTooltip('${escapeHtml(infoStr)}')"
+            class="h-6 rounded-sm border cursor-pointer transition-colors duration-150 ${cellClass}" title="${escapeHtml(infoStr)}"></div>`;
         }).join('');
 
         return `
@@ -4861,6 +4984,7 @@
       const tip = document.getElementById('circadian-slot-tooltip');
       if (tip) tip.textContent = text;
     }
+    window.showCircadianTooltip = showCircadianTooltip;
 
 
     // ---------------------------------------------------------------
