@@ -457,6 +457,16 @@
             </div>
           </div>
         </div>
+
+        <div class="flex items-center gap-3 mt-4 bg-zinc-900/50 p-3 rounded border border-zinc-800">
+            <label for="auto-schedule-mins" class="text-xs text-zinc-400 font-mono">AVAILABLE TIME (MIN):</label>
+            <input type="number" id="auto-schedule-mins" value="120" min="10" max="1440" step="10" 
+                   class="bg-black border border-zinc-700 rounded px-2 py-1 text-sm text-white w-20 focus:border-amber-500 focus:outline-none">
+            <button onclick="handleAutoSchedule()" 
+                    class="bg-zinc-800 hover:bg-zinc-700 text-amber-500 font-mono text-xs px-4 py-1.5 rounded transition-colors border border-zinc-700 hover:border-amber-500">
+                ⚡ AUTO-FILL TIMETABLE
+            </button>
+        </div>
       </section>
 
       <!-- Today's Sessions Log -->
@@ -3442,6 +3452,136 @@
       }
       toast('Task selected. Click Start or 5-min.', 'info');
     }
+
+    function addTasksToActiveTimetable(scheduledTasks) {
+      if (!scheduledTasks || !scheduledTasks.length) return;
+
+      const blocks = scheduledTasks.map((t, idx) => {
+        const dur = t.estimated_duration || t.estimated_duration_min || 30;
+        return {
+          id: t.id,
+          task_id: t.id,
+          day_number: 1,
+          topic: t.title,
+          duration_minutes: dur,
+          status: t.status || 'PENDING',
+          window_start: '09:00',
+          window_deadline: '23:00',
+          target_date: new Date().toISOString().slice(0, 10),
+          deliverable_spec: `Priority P${t.priority || 1} focus block`,
+          resources: []
+        };
+      });
+
+      window.activeTimetable = {
+        id: 'auto-sched-' + Date.now(),
+        title: 'Algorithmic Timetable',
+        total_days: 1,
+        track_id: scheduledTasks[0]?.category || 'coding',
+        blocks: blocks,
+        audit_notes: `Auto-scheduled ${scheduledTasks.length} task(s) via optimal knapsack algorithm.`
+      };
+      window.activeTimetableBlock = blocks[0];
+
+      const widget = document.getElementById('hud-timetable-widget');
+      if (widget) {
+        const b = blocks[0];
+        const totalMinutes = blocks.reduce((sum, item) => sum + (item.duration_minutes || 0), 0);
+        widget.innerHTML = `
+          <div class="p-4 rounded-xl bg-zinc-900/90 border border-amber-500/40 shadow-lg font-mono text-xs space-y-2.5">
+            <div class="flex items-center justify-between gap-2">
+              <div class="flex items-center gap-2">
+                <span class="w-2.5 h-2.5 rounded-full bg-amber-400 animate-pulse"></span>
+                <span class="text-xs font-bold font-sans text-zinc-100">Timetable: ${escapeHtml(b.topic)}</span>
+              </div>
+              <span class="px-2 py-0.5 rounded text-[10px] bg-amber-950/60 text-amber-300 border border-amber-700/50 flex-shrink-0 font-mono">
+                ${scheduledTasks.length} Blocks (${totalMinutes}m)
+              </span>
+            </div>
+            <div class="text-xs text-zinc-400 flex items-center gap-2 flex-wrap">
+              <span>Target: ${b.duration_minutes}m</span>
+              <span>•</span>
+              <span class="text-amber-400 font-semibold">Priority P${scheduledTasks[0].priority || 1}</span>
+              <span>•</span>
+              <span class="text-zinc-500">Algorithmic Timetable</span>
+            </div>
+            <div class="space-y-1.5 max-h-44 overflow-y-auto pr-1 my-2">
+              ${blocks.map((blk, i) => `
+                <div class="flex items-center justify-between py-1.5 px-2 rounded bg-zinc-950/70 border border-zinc-800 text-[11px] hover:border-zinc-700 transition">
+                  <div class="flex items-center gap-2 truncate">
+                    <span class="text-amber-400 font-mono font-bold">${i + 1}.</span>
+                    <span class="text-zinc-200 truncate" title="${escapeHtml(blk.topic)}">${escapeHtml(blk.topic)}</span>
+                  </div>
+                  <div class="flex items-center gap-1.5 flex-shrink-0 ml-2">
+                    <span class="text-zinc-500 font-mono text-[10px]">${blk.duration_minutes}m</span>
+                    <button onclick="selectTask('${escapeHtml(blk.task_id)}');" class="text-[10px] px-1.5 py-0.5 rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-300 transition">Select</button>
+                  </div>
+                </div>
+              `).join('')}
+            </div>
+            <div class="flex items-center gap-2 pt-1">
+              <button onclick="selectTask('${escapeHtml(b.task_id)}'); startSession(false);" class="px-3.5 py-1.5 bg-amber-600 hover:bg-amber-500 text-white text-xs font-bold rounded shadow transition active:scale-95 cursor-pointer flex items-center gap-1.5">
+                <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="currentColor"><polygon points="6 3 20 12 6 21 6 3"/></svg>
+                <span>Start Next Block</span>
+              </button>
+              <button onclick="selectTask('${escapeHtml(b.task_id)}');" class="px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-xs rounded border border-zinc-700 transition">
+                Load into Selector
+              </button>
+            </div>
+          </div>
+        `;
+        widget.classList.remove('hidden');
+      }
+
+      // Auto-select the first scheduled task in the Quick Start selector
+      selectTask(scheduledTasks[0].id);
+
+      if (typeof toast === 'function') {
+        toast(`⚡ Packed ${scheduledTasks.length} tasks into timetable.`, 'success');
+      }
+    }
+    window.addTasksToActiveTimetable = addTasksToActiveTimetable;
+
+    async function handleAutoSchedule() {
+      const minInput = document.getElementById("auto-schedule-mins");
+      const minutes = parseInt(minInput?.value, 10);
+      
+      if (isNaN(minutes) || minutes < 5) {
+        alert("Enter a valid time window (minimum 5 minutes).");
+        return;
+      }
+
+      try {
+        const tasks = await api("POST", "/api/tasks/auto-schedule", {
+          available_minutes: minutes,
+          max_tasks: 100
+        });
+
+        if (!tasks || tasks.length === 0) {
+          alert("No pending tasks available to schedule.");
+          return;
+        }
+
+        console.log(`[Scheduler] Packed ${tasks.length} tasks into ${minutes}m window.`, tasks);
+        
+        // Push returned tasks into the active timetable queue.
+        if (typeof addTasksToActiveTimetable === "function") {
+          addTasksToActiveTimetable(tasks);
+        } else {
+          console.warn("Timetable render function not mapped. Tasks retrieved:", tasks);
+          alert(`Successfully scheduled ${tasks.length} tasks. Check console.`);
+        }
+
+      } catch (err) {
+        if (err.status === 404 || (err.message && err.message.includes("404"))) {
+          alert("No pending tasks available in your backlog.");
+        } else {
+          console.error("[Scheduler] Execution failed:", err);
+          alert("Auto-scheduling failed. See console for details.");
+        }
+      }
+    }
+    window.handleAutoSchedule = handleAutoSchedule;
 
     async function createTask(e) {
       if (e) {
